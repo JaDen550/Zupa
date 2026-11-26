@@ -14,3 +14,8 @@ src/
 prisma/
 next.config.ts
 scripts/
+zupa-web/
+src/
+prisma/
+next.config.ts
+scripts/
