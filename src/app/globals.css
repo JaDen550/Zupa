@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* ZUPA brand tokens (Tailwind v4: available as bg-brand, text-charcoal, ...) */
+@theme {
+  --color-brand: #ea580c;
+  --color-brand-dark: #c2410c;
+  --color-brand-light: #fff1e6;
+  --color-gold: #fbbf24;
+  --color-charcoal: #1f2124;
+  --color-ink-soft: #44484f;
+  --color-muted: #6f737a;
+  --color-surface: #faf8f5;
+  --color-line: #ece7e1;
+  --color-ok: #15803d;
+  --color-ok-light: #e7f6ec;
+  --color-danger: #d64545;
+  --color-danger-light: #fdecec;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere (accessibility) */
+:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 2px;
+}

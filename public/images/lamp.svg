@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4f9f6"/><stop offset="1" stop-color="#e7f2ec"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ffe8a3" stop-opacity="0.95"/><stop offset="1" stop-color="#ffe8a3" stop-opacity="0"/></radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3d4a45"/><stop offset="0.5" stop-color="#5b6b64"/><stop offset="1" stop-color="#2f3a35"/></linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#bg)"/>
+  <ellipse cx="200" cy="332" rx="120" ry="16" fill="#0b8a4a" opacity="0.10"/>
+  <!-- light glow -->
+  <ellipse cx="246" cy="214" rx="110" ry="90" fill="url(#glow)"/>
+  <!-- base -->
+  <path d="M140 318 h96 a10 10 0 0 0 10 -10 v-8 h-116 v8 a10 10 0 0 0 10 10 z" fill="url(#metal)"/>
+  <rect x="150" y="288" width="76" height="14" rx="6" fill="#2f3a35"/>
+  <!-- stem -->
+  <path d="M186 290 q-6 -70 30 -118" stroke="url(#metal)" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <!-- head -->
+  <g transform="rotate(38 226 168)">
+    <rect x="176" y="146" width="128" height="34" rx="16" fill="url(#metal)"/>
+    <rect x="186" y="176" width="108" height="10" rx="5" fill="#ffd166"/>
+    <rect x="186" y="176" width="108" height="10" rx="5" fill="#fff3c4" opacity="0.7"/>
+  </g>
+  <!-- accent button -->
+  <circle cx="186" cy="284" r="7" fill="#f5b301"/>
+  <!-- rays -->
+  <g stroke="#f5b301" stroke-width="4" stroke-linecap="round" opacity="0.75">
+    <line x1="286" y1="238" x2="308" y2="252"/>
+    <line x1="298" y1="206" x2="324" y2="206"/>
+    <line x1="274" y1="266" x2="284" y2="288"/>
+  </g>
+</svg>

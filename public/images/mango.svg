@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4f9f6"/><stop offset="1" stop-color="#e7f2ec"/></linearGradient>
+    <linearGradient id="pouch" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc93c"/><stop offset="1" stop-color="#f77f00"/></linearGradient>
+    <linearGradient id="slice" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd166"/><stop offset="1" stop-color="#ef8354"/></linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#bg)"/>
+  <ellipse cx="200" cy="330" rx="130" ry="18" fill="#0b8a4a" opacity="0.10"/>
+  <!-- pouch -->
+  <path d="M120 118 h160 a14 14 0 0 1 14 14 v168 a20 20 0 0 1 -20 20 h-148 a20 20 0 0 1 -20 -20 v-168 a14 14 0 0 1 14 -14 z" fill="url(#pouch)"/>
+  <rect x="112" y="104" width="176" height="24" rx="10" fill="#e76f51"/>
+  <rect x="126" y="110" width="148" height="6" rx="3" fill="#ffd166" opacity="0.8"/>
+  <!-- window -->
+  <path d="M150 170 h100 a70 70 0 0 1 0 108 h-100 a70 70 0 0 1 0 -108 z" fill="#fff7e6" opacity="0.92"/>
+  <!-- mango slices in window -->
+  <ellipse cx="185" cy="222" rx="34" ry="24" fill="url(#slice)" transform="rotate(-18 185 222)"/>
+  <ellipse cx="222" cy="234" rx="32" ry="22" fill="url(#slice)" transform="rotate(14 222 234)"/>
+  <ellipse cx="204" cy="200" rx="26" ry="18" fill="#ffb703" transform="rotate(-4 204 200)"/>
+  <!-- leaf -->
+  <path d="M262 96 q26 -26 52 -18 q-8 30 -38 30 q-12 -2 -14 -12 z" fill="#2a9d8f"/>
+  <path d="M268 96 q18 -12 36 -14" stroke="#1d6f66" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>

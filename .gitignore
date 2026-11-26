@@ -1,0 +1,16 @@
+node_modules/
+.env
+data/
+public/uploads/
+mobile/node_modules/
+mobile/.expo/
+zupa-web/
+src/
+prisma/
+next.config.ts
+scripts/
+zupa-web/
+src/
+prisma/
+next.config.ts
+scripts/

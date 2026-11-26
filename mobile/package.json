@@ -1,0 +1,28 @@
+{
+  "name": "zupa-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "fix-versions": "expo install --fix"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "*",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "*",
+    "expo-constants": "*",
+    "expo-linking": "*",
+    "expo-router": "*",
+    "expo-secure-store": "*",
+    "expo-status-bar": "*",
+    "react": "19.3.0",
+    "react-native": "*",
+    "react-native-gesture-handler": "~3.3.0",
+    "react-native-safe-area-context": "*",
+    "react-native-screens": "*"
+  }
+}

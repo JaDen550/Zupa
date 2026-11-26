@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZUPA — Your everyday shopping destination</title>
+<meta name="description" content="ZUPA — your everyday shopping destination in Sierra Leone. Fashion, electronics, groceries and more, delivered to your door. Pay in NLe or Dollars.">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="theme-color" content="#ea580c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="announce">🚚 Free delivery in Freetown on orders over <b>$75</b> &nbsp;·&nbsp; Pay with Orange&nbsp;Money, Bank&nbsp;Transfer or Cash&nbsp;on&nbsp;Delivery &nbsp;·&nbsp; Prices in <b>NLe &amp; Dollars</b></div>
+
+<header class="header">
+  <div class="container header-inner">
+    <a class="logo" href="#/" aria-label="ZUPA home">
+      <img src="logo.png" width="40" height="40" alt="" style="object-fit:contain">
+      <span class="logo-text">ZUPA</span>
+    </a>
+
+    <nav class="nav" id="mainNav">
+      <a href="#/" data-nav="">Home</a>
+      <a href="#/shop" data-nav="shop">Shop</a>
+      <a href="#/orders" data-nav="orders" class="no-admin need-login">My Orders</a>
+      <a href="#/admin" data-nav="admin" id="adminNav" hidden>Admin</a>
+    </nav>
+
+    <form class="search" id="searchForm" role="search">
+      <input id="searchInput" type="search" placeholder="Search coffee, phones, outfits…" autocomplete="off" aria-label="Search products">
+      <button type="submit" aria-label="Search">🔍</button>
+    </form>
+
+    <div class="header-actions">
+      <button class="currency-toggle" id="currencyBtn" title="Switch currency (NLe / Dollar)">
+        <span class="cur-opt" id="curLe">NLe</span><span class="cur-slash">/</span><span class="cur-opt" id="curUsd">$</span>
+      </button>
+      <a class="icon-btn no-admin" href="#/wishlist" title="Wishlist">♥<span class="badge" id="wishBadge" hidden></span></a>
+      <a class="icon-btn no-admin" href="#/cart" title="Cart">🛒<span class="badge" id="cartBadge" hidden></span></a>
+      <button class="user-btn" id="userBtn" title="Account">👤 <span id="userLabel">Sign in</span></button>
+      <button class="hamburger" id="hamburgerBtn" aria-label="Menu">☰</button>
+    </div>
+  </div>
+</header>
+
+<main id="app" class="app-main"><div class="container"><div class="loading-page"><div class="spinner"></div><p>Loading store…</p></div></div></main>
+
+<footer class="footer">
+  <div class="container footer-grid">
+    <div>
+      <div class="footer-logo">ZUPA</div>
+      <p class="footer-tag">Your everyday shopping destination. Quality goods, honest prices — delivered to your door, paid your way.</p>
+      <div class="pay-badges">
+        <span>Orange Money</span><span>Africell</span><span>Bank</span><span>Cash</span>
+      </div>
+    </div>
+    <div>
+      <h4>Shop</h4>
+      <a href="#/shop">All products</a>
+      <a href="#/shop?category=Electronics">Electronics</a>
+      <a href="#/shop?category=Food%20%26%20Agro">Food &amp; Agro</a>
+      <a href="#/shop?category=Fashion">Fashion</a>
+    </div>
+    <div>
+      <h4>Account</h4>
+      <a href="#/login">Sign in</a>
+      <a href="#/orders" class="no-admin need-login">Track my order</a>
+      <a href="#/wishlist" class="no-admin">Wishlist</a>
+      <a href="#/admin">Admin portal</a>
+    </div>
+    <div>
+      <h4>Payments accepted</h4>
+      <p class="footer-pay">📱 Mobile Money &nbsp;🏦 Bank Transfer<br>💵 Cash on Delivery</p>
+      <p class="footer-pay">All prices switch live between <b>NLe</b> and <b>Dollars ($)</b>.</p>
+    </div>
+  </div>
+  <div class="container footer-bottom">© <span id="year"></span> ZUPA · Freetown, Sierra Leone</div>
+</footer>
+
+<div id="modalRoot"></div>
+<div id="toastRoot" class="toast-root" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
