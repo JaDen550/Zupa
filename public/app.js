@@ -1146,7 +1146,7 @@ function renderLogin(app, params, tab = 'login') {
       ${pwField('rgPass', 'Password', { auto: 'new-password', hint: '<div class="pw-meter" id="rgMeter"></div>' })}
       ${pwField('rgPass2', 'Confirm password', { auto: 'new-password' })}
       <button class="btn block lg" id="rgBtn">Create account →</button>
-      <p style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:10px">By creating an account you agree to ZUPA's terms and privacy policy.</p>`;
+      <p style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:10px">By creating an account you agree to ZUPA's <a href="#/terms">terms of service</a> and <a href="#/privacy">privacy policy</a>.</p>`;
     wirePw(body); wireStrength($('#rgPass', body), $('#rgMeter', body));
     const submit = async () => {
       const v = (id) => $(id, body).value.trim();
@@ -1782,6 +1782,149 @@ function adminSettings(c) {
   });
 }
 
+/* ==================== LEGAL PAGES ==================== */
+const SITE_TITLE = document.title;
+const CONTACT_EMAIL = 'zupaonlinestore@gmail.com';
+const LEGAL_UPDATED = '27 November 2026';
+const MAIL = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
+const LEGAL = {
+  privacy: {
+    title: 'Privacy policy',
+    html: `
+<p>ZUPA is an online store based in Freetown, Sierra Leone. This policy explains what personal information we collect when you use our website or app, why we collect it, and the choices you have. Questions? Email ${MAIL}.</p>
+
+<h2>1. Information we collect</h2>
+<ul>
+  <li><b>Account details:</b> your name, email address, phone number (optional) and city. Your password is stored only as a one-way hash, so nobody at ZUPA can read it.</li>
+  <li><b>Order details:</b> the items you buy, your delivery address and phone number, order notes, order status and delivery tracking updates, prices and the exchange rate used.</li>
+  <li><b>Payment details:</b> the payment method, amount, status and the reference you give us (for example a bank transfer reference). For mobile money we record the provider and the wallet phone number you enter. ZUPA does not accept or store bank-card numbers.</li>
+  <li><b>Reviews and wishlist:</b> anything you post as a product review and the products you save.</li>
+  <li><b>Security information:</b> your sign-in sessions (kept as hashed tokens) and failed sign-in attempts, so we can protect your account. Our hosting providers may keep routine technical logs.</li>
+</ul>
+
+<h2>2. How we use your information</h2>
+<ul>
+  <li>To create and manage your account and sign you in.</li>
+  <li>To process, pack and deliver your orders, verify payments and show you delivery tracking.</li>
+  <li>To send you password-reset codes and to reply to your questions.</li>
+  <li>To keep the store secure, prevent fraud and misuse, and keep records we need for accounting and disputes.</li>
+  <li>To understand which products sell well (for example the best-sellers list).</li>
+</ul>
+<p>We do not sell your personal information, and we do not use advertising or tracking cookies.</p>
+
+<h2>3. Who we share it with</h2>
+<ul>
+  <li><b>Delivery:</b> riders and delivery staff receive only what they need to deliver your order, such as your name, phone number and address.</li>
+  <li><b>Service providers</b> that run the store for us: Render (website hosting), Neon (database hosting) and Brevo (sending emails). They may process data on servers outside Sierra Leone, only to provide their service to us.</li>
+  <li><b>Authorities</b>, where the law requires it or to protect our rights, customers or the public.</li>
+</ul>
+
+<h2>4. Cookies and browser storage</h2>
+<p>We do not use advertising or tracking cookies. Your browser's local storage keeps your sign-in, your cart and your currency choice on your own device. Signing out removes your sign-in from that device.</p>
+
+<h2>5. How long we keep it</h2>
+<p>We keep your account details while your account is open. Order and payment records are kept for accounting and dispute purposes. If you delete your account, your profile and sign-in are removed and past orders are kept without your personal details.</p>
+
+<h2>6. Your choices</h2>
+<ul>
+  <li>Update your name, phone and city under <b>Account → Edit profile</b>.</li>
+  <li>Change your password, or sign out of all other devices, under <b>Account</b>.</li>
+  <li>Delete your account under <b>Account → Delete my account</b>.</li>
+  <li>To ask what we hold about you, or to ask for a correction, email ${MAIL}.</li>
+</ul>
+
+<h2>7. Security</h2>
+<p>We protect your information with measures such as hashed passwords, encrypted connections (HTTPS), limits on repeated sign-in attempts and restricted admin access. No system is completely secure, so please choose a strong password and keep it private.</p>
+
+<h2>8. Children</h2>
+<p>ZUPA is not meant for people under 18. If you think a child has given us personal information, email us and we will remove it.</p>
+
+<h2>9. Changes to this policy</h2>
+<p>We may update this policy from time to time. The date at the top shows when it last changed. If the changes are important, we will say so on the site.</p>
+
+<h2>10. Contact us</h2>
+<p>ZUPA, Freetown, Sierra Leone. Email: ${MAIL}.</p>`
+  },
+  terms: {
+    title: 'Terms of service',
+    html: `
+<p>These terms apply when you use the ZUPA website or app and when you buy from us. ZUPA is a retailer: we sell our own products directly, and we are not a marketplace. By creating an account or placing an order, you agree to these terms and to our <a href="#/privacy">privacy policy</a>.</p>
+
+<h2>1. Your account</h2>
+<ul>
+  <li>Give us accurate information and keep it up to date.</li>
+  <li>Keep your password secret. You are responsible for what happens on your account.</li>
+  <li>We may suspend or close accounts that are used for fraud, abuse or breaking these terms.</li>
+</ul>
+
+<h2>2. Products and prices</h2>
+<ul>
+  <li>Prices are in new Leones (NLe). Dollar prices are shown for convenience and use an exchange rate set by ZUPA that can change over time. The rate in effect when you place your order is recorded on that order and applies to it.</li>
+  <li>Stock is limited. Product photos and descriptions are as accurate as we can make them, but colours and packaging may vary a little.</li>
+  <li>If a price is clearly wrong, we may cancel the order and refund anything you paid.</li>
+</ul>
+
+<h2>3. Orders</h2>
+<p>Placing an order is an offer to buy. We accept it when we confirm it, which may be after we verify your payment. We may refuse or cancel an order, for example if an item is out of stock, a payment cannot be verified or we suspect fraud. If you have already paid, we will refund you.</p>
+
+<h2>4. Payment</h2>
+<ul>
+  <li><b>Mobile money:</b> pay from your mobile wallet when you place the order.</li>
+  <li><b>Bank transfer:</b> transfer the total to our bank account and submit your transfer reference. Your order moves forward once our team has verified the payment.</li>
+  <li><b>Cash on delivery:</b> pay the delivery rider when you receive your order.</li>
+  <li>Orders that stay unpaid for a reasonable time may be cancelled.</li>
+</ul>
+
+<h2>5. Delivery</h2>
+<ul>
+  <li>We deliver to the areas we serve. The delivery fee is shown before you pay, and estimated delivery times are shown on your order.</li>
+  <li>Delivery times are estimates, not guarantees. Delays can happen because of traffic, weather or other things outside our control.</li>
+  <li>Please give a complete address and a phone number that you can answer. If we cannot reach you, we may try again or cancel the order.</li>
+  <li>You can follow your package on your order page under <b>My Orders</b>.</li>
+</ul>
+
+<h2>6. Damaged, faulty or wrong items</h2>
+<ul>
+  <li>Please check your items when they arrive.</li>
+  <li>If an item is damaged, faulty or not what you ordered, email ${MAIL} within 48 hours of delivery with your order number and, if you can, a photo. Please keep the item and its packaging.</li>
+  <li>We will then repair, replace or refund the item, as we judge fair.</li>
+  <li>Food and other perishable goods cannot be returned unless they arrive spoiled or damaged.</li>
+</ul>
+
+<h2>7. Reviews and your conduct</h2>
+<ul>
+  <li>Reviews must be honest and must not be abusive, unlawful or misleading. We may remove reviews that break this rule.</li>
+  <li>Do not use the site for fraud, try to break into accounts or systems, or interfere with how the store works.</li>
+</ul>
+
+<h2>8. Our content</h2>
+<p>The ZUPA name, logo, website and our own designs, including the TBT (The Bold Tribe) collection, belong to us. Please do not copy or reuse them without our permission.</p>
+
+<h2>9. Our responsibility</h2>
+<p>We will do our best to give you a good service. To the extent the law allows, ZUPA is not responsible for indirect or consequential losses, and our total responsibility for any order is limited to the amount you paid for it. Nothing in these terms limits any right you have by law that cannot be limited.</p>
+
+<h2>10. Changes</h2>
+<p>We may update these terms. The date at the top shows when they last changed. If you keep using ZUPA after a change, you accept the updated terms.</p>
+
+<h2>11. Governing law and contact</h2>
+<p>These terms are governed by the laws of Sierra Leone. Questions or complaints? Email ${MAIL}.</p>`
+  }
+};
+function renderLegal(app, kind) {
+  const d = LEGAL[kind];
+  document.title = d.title + ' · ZUPA';
+  app.innerHTML = `
+  <div class="container page">
+    <article class="legal">
+      <h1>${d.title}</h1>
+      <div class="updated">Last updated: ${LEGAL_UPDATED}</div>
+      ${d.html}
+      <div class="legal-links"><a href="#/privacy">Privacy policy</a><a href="#/terms">Terms of service</a><a href="#/">← Back to the store</a></div>
+    </article>
+  </div>`;
+  window.scrollTo(0, 0);
+}
+
 /* ==================== ROUTER ==================== */
 async function route() {
   const raw = (location.hash || '#/').replace(/^#\/?/, '');
@@ -1793,6 +1936,7 @@ async function route() {
   $$('#mainNav a').forEach(a => a.classList.toggle('active', a.dataset.nav === root || (root === 'home' && a.dataset.nav === '')));
 
   const app = $('#app');
+  document.title = SITE_TITLE;
   if (isAdmin() && ['cart', 'checkout', 'orders', 'wishlist'].includes(root)) { go('#/admin'); return; }
   try {
     if (root === 'home') await renderHome(app);
@@ -1805,6 +1949,7 @@ async function route() {
     else if (root === 'wishlist') await renderWishlist(app);
     else if (root === 'login') renderLogin(app, params, 'login');
     else if (root === 'register') renderLogin(app, params, 'register');
+    else if (root === 'privacy' || root === 'terms') renderLegal(app, root);
     else if (root === 'admin') await renderAdmin(app, parts[1] || 'dashboard');
     else {
       app.innerHTML = `<div class="container page"><div class="empty-state"><div class="big">🧭</div><h3>Page not found</h3><p>The page you're looking for doesn't exist.</p><a class="btn" href="#/">Back home</a></div></div>`;

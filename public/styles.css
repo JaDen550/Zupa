@@ -381,13 +381,15 @@ input,select,textarea{font-family:inherit;font-size:14.5px;color:var(--ink)}
 
 /* ---- footer ---- */
 .footer{background:#26282c;color:#d1c6ba;margin-top:40px;font-size:14px}
-.footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1.2fr;gap:30px;padding-top:44px;padding-bottom:30px}
+.footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1.3fr 1.2fr;gap:30px;padding-top:44px;padding-bottom:30px}
 .footer-logo{font-size:22px;font-weight:800;color:#fff;margin-bottom:10px}
 .footer-logo b{color:#fcd34d}
 .footer-tag{font-size:13.5px;line-height:1.7;color:#b59f8f;max-width:300px}
 .footer h4{color:#fff;font-size:14.5px;margin-bottom:12px;text-transform:uppercase;letter-spacing:.7px}
 .footer a{display:block;color:#c9b8aa;font-size:14px;padding:4px 0}
 .footer a:hover{color:#fcd34d}
+.footer .footer-mail{overflow-wrap:anywhere;color:#fcd34d}
+.footer a.footer-inline{display:inline;padding:0;font-size:inherit;color:#c9b8aa;text-decoration:underline}
 .footer-pay{font-size:13.5px;color:#b59f8f;margin-bottom:8px;line-height:1.8}
 .pay-badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
 .pay-badges span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);font-size:11.5px;font-weight:700;color:#f4e8dc;padding:4px 10px;border-radius:6px}
@@ -486,3 +488,17 @@ input,select,textarea{font-family:inherit;font-size:14.5px;color:var(--ink)}
 .track-eta{background:var(--gold);background:#fff4cc;border:1px solid #f4d675;border-radius:12px;padding:10px 14px;margin:6px 0 10px;display:flex;flex-direction:column;gap:1px}
 .track-eta small{color:#8a6500;font-weight:700;text-transform:uppercase;font-size:11.5px;letter-spacing:.04em}
 .track-eta b{font-size:17px;color:var(--ink)}
+
+/* Legal pages (privacy policy, terms) */
+.legal{max-width:780px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:20px;padding:34px 38px;box-shadow:var(--shadow-l)}
+.legal h1{font-size:30px;letter-spacing:-.8px;margin-bottom:4px}
+.legal .updated{color:var(--muted);font-size:13.5px;margin-bottom:20px}
+.legal h2{font-size:18px;margin:26px 0 8px;letter-spacing:-.3px}
+.legal p,.legal li{font-size:15px;line-height:1.75;color:var(--ink-2)}
+.legal p{margin-bottom:10px}
+.legal ul{margin:0 0 10px 20px}
+.legal li{margin-bottom:4px}
+.legal a{text-decoration:underline}
+.legal .legal-note{background:var(--brand-xl);border:1px solid #fdd8b8;border-radius:12px;padding:12px 14px;font-size:14px;margin-bottom:16px}
+.legal .legal-links{display:flex;gap:14px;flex-wrap:wrap;margin-top:26px;padding-top:16px;border-top:1px solid var(--line);font-size:14px}
+@media (max-width:640px){.legal{padding:22px 18px;border-radius:14px}.legal h1{font-size:25px}}
