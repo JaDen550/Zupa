@@ -20,6 +20,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api/admin/upload', express.json({ limit: '8mb' }));
+app.use('/api/admin/products/bulk', express.json({ limit: '3mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { etag: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 
@@ -121,7 +122,37 @@ function applyRate() {
   db.settings.freeShippingOverUSD = Math.round((db.settings.freeShippingOverSLE / r) * 10000) / 10000;
 }
 applyRate();
+// Where customers send money. Filled in by the store owner under Admin -> Settings (never kept in the code).
+if (!db.settings.paymentDetails || typeof db.settings.paymentDetails !== 'object') {
+  db.settings.paymentDetails = { bank: { bankName: '', accountName: '', accountNumber: '', branch: '' }, momo: [] };
+}
+if (!Array.isArray(db.settings.paymentDetails.momo)) db.settings.paymentDetails.momo = [];
+if (!db.settings.paymentDetails.bank) db.settings.paymentDetails.bank = { bankName: '', accountName: '', accountNumber: '', branch: '' };
 save();
+const MOMO_PROVIDERS = ['Orange Money', 'Africell Money', 'QMoney'];
+const bankReady = () => { const b = db.settings.paymentDetails.bank; return !!(b.bankName && b.accountName && b.accountNumber); };
+const momoReady = () => db.settings.paymentDetails.momo.filter((m) => m.number && m.accountName);
+const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, max);
+function parsePaymentDetails(x) {
+  if (!x || typeof x !== 'object') return { error: 'Invalid payment details.' };
+  const b = x.bank || {};
+  const bank = { bankName: clean(b.bankName, 60), accountName: clean(b.accountName, 80), accountNumber: clean(b.accountNumber, 40), branch: clean(b.branch, 60) };
+  const some = bank.bankName || bank.accountName || bank.accountNumber;
+  if (some && !(bank.bankName && bank.accountName && bank.accountNumber)) return { error: 'For bank transfers fill in the bank name, account name and account number, or leave all three empty.' };
+  if (bank.accountNumber && !/^[A-Za-z0-9][A-Za-z0-9 \-\/]{3,39}$/.test(String(b.accountNumber).trim())) return { error: 'The bank account number may only contain letters, numbers, spaces and dashes.' };
+  const momo = [];
+  for (const m of Array.isArray(x.momo) ? x.momo : []) {
+    const provider = MOMO_PROVIDERS.find((p) => p === m.provider);
+    const number = clean(m.number, 20), accountName = clean(m.accountName, 80);
+    if (!provider || (!number && !accountName)) continue;
+    if (!/^\+?[0-9 ]{8,15}$/.test(number)) return { error: `Enter a valid ${provider} number (digits only, for example +232 76 123456).` };
+    if (!accountName) return { error: `Enter the name the ${provider} number is registered under.` };
+    if (momo.some((q) => q.provider === provider)) continue;
+    momo.push({ provider, number, accountName });
+  }
+  return { value: { bank, momo } };
+}
+const mask = (v) => (v && v.length > 4 ? '****' + v.slice(-4) : '****');
 
 function pub(p) {
   const { createdById, createdByName, updatedById, updatedByName, legacyOwner, ...rest } = p;
@@ -426,6 +457,8 @@ app.post('/api/orders', auth, (req, res) => {
   const { items, address, paymentMethod, coupon, notes } = req.body || {};
   const method = ['momo', 'bank', 'cod'].includes(paymentMethod) ? paymentMethod : null;
   if (!method) return res.status(400).json({ error: 'Please choose a payment method.' });
+  if (method === 'bank' && !bankReady()) return res.status(400).json({ error: 'Bank transfer is not available right now. Please choose another payment method.' });
+  if (method === 'momo' && !momoReady().length) return res.status(400).json({ error: 'Mobile money is not available right now. Please choose another payment method.' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Your cart is empty.' });
   if (!address || !address.fullName || !address.phone || !address.line1 || !address.city) {
     return res.status(400).json({ error: 'Please fill in your delivery details (name, phone, address, city).' });
@@ -473,16 +506,11 @@ app.post('/api/orders', auth, (req, res) => {
   db.orders.push(order);
 
   let payment = null;
-  if (method === 'card' || method === 'momo') {
+  if (method === 'momo' || method === 'bank') {
     payment = {
       id: uid('PAY'), orderId, amountUSD: totalUSD, currency: 'USD', exchangeRate: s.exchangeRate, method,
-      side: 'client', status: 'pending', reference: '', note: '', createdAt: nowIso, updatedAt: nowIso
-    };
-    db.payments.push(payment);
-  } else if (method === 'bank') {
-    payment = {
-      id: uid('PAY'), orderId, amountUSD: totalUSD, currency: 'USD', exchangeRate: s.exchangeRate, method,
-      side: 'client', status: 'pending', reference: '', note: 'Awaiting transfer reference', createdAt: nowIso, updatedAt: nowIso
+      side: 'client', status: 'pending', reference: '',
+      note: method === 'momo' ? 'Awaiting mobile money transaction ID' : 'Awaiting transfer reference', createdAt: nowIso, updatedAt: nowIso
     };
     db.payments.push(payment);
   } // cod: no payment record until delivered / admin records it
@@ -516,61 +544,37 @@ app.post('/api/orders/:id/cancel', auth, (req, res) => {
   res.json({ ok: true, order: o });
 });
 
-/* ---------------- Client-side payments (payment gateway simulation) ---------------- */
-app.post('/api/payments/:id/process', auth, (req, res) => {
-  const pay = db.payments.find((p) => p.id === req.params.id);
-  if (!pay) return res.status(404).json({ error: 'Payment not found.' });
-  const order = db.orders.find((o) => o.id === pay.orderId);
-  if (!order || order.userId !== req.user.id) return res.status(403).json({ error: 'Not your payment.' });
-  if (pay.side !== 'client' || !['card', 'momo'].includes(pay.method)) {
-    return res.status(400).json({ error: 'This payment is not processed through the online gateway.' });
-  }
-  if (pay.status === 'completed') return res.json({ ok: true, payment: pay, order });
-  const { cardNumber, momoProvider, momoPhone } = req.body || {};
-  const nowIso = new Date().toISOString();
-
-  if (pay.method === 'momo') {
-    if (!momoPhone || !momoProvider) return res.status(400).json({ error: 'Mobile money provider and phone number are required.' });
-    pay.status = 'completed';
-    pay.reference = 'MM-' + crypto.randomBytes(4).toString('hex').toUpperCase();
-    pay.note = `${momoProvider} • ${momoPhone}`;
-  } else {
-    const digits = String(cardNumber || '').replace(/\s+/g, '');
-    if (!/^\d{12,19}$/.test(digits)) return res.status(400).json({ error: 'Enter a valid card number.' });
-    if (digits.endsWith('0')) {
-      pay.status = 'failed';
-      pay.note = 'Card declined by issuer';
-      pay.updatedAt = nowIso;
-      order.updatedAt = nowIso;
-      save();
-      return res.status(402).json({ error: 'Card declined. Try another card (tip: cards ending in 0 are declined in this demo).' });
-    }
-    pay.status = 'completed';
-    pay.reference = 'ch_' + crypto.randomBytes(4).toString('hex');
-    pay.note = 'Card •••• ' + digits.slice(-4);
-  }
-  pay.updatedAt = nowIso;
-  order.paymentStatus = 'paid';
-  if (order.status === 'awaiting_payment') { order.status = 'paid'; trackForStatus(order, 'paid'); }
-  order.updatedAt = nowIso;
-  save();
-  res.json({ ok: true, payment: pay, order });
-});
-
-// Client submits bank-transfer reference (still needs admin verification)
+/* ---------------- Customer payments: bank transfer and mobile money ----------------
+   The customer sends the money to the store's own account / wallet (details are set by the owner in
+   Admin -> Settings) and submits the transaction ID. An admin checks it against the bank or wallet
+   statement and only then marks the payment as paid. Nothing the browser says can mark an order paid. */
 app.post('/api/payments/:id/submit-reference', auth, (req, res) => {
   const pay = db.payments.find((p) => p.id === req.params.id);
   if (!pay) return res.status(404).json({ error: 'Payment not found.' });
   const order = db.orders.find((o) => o.id === pay.orderId);
   if (!order || order.userId !== req.user.id) return res.status(403).json({ error: 'Not your payment.' });
-  const { reference } = req.body || {};
-  if (!reference || String(reference).trim().length < 4) {
-    return res.status(400).json({ error: 'Please enter your transfer reference / transaction ID.' });
+  if (pay.side !== 'client' || !['bank', 'momo'].includes(pay.method)) return res.status(400).json({ error: 'This payment does not use a reference.' });
+  if (!['pending', 'submitted', 'failed'].includes(pay.status) || order.status !== 'awaiting_payment') {
+    return res.status(400).json({ error: 'This payment can no longer be changed.' });
   }
+  const { reference, provider, senderPhone } = req.body || {};
+  const ref = String(reference || '').trim().slice(0, 60);
+  if (ref.length < 4) return res.status(400).json({ error: 'Please enter your transfer reference / transaction ID.' });
+  let note = 'Client submitted reference — awaiting admin verification';
+  if (pay.method === 'momo') {
+    if (!momoReady().some((m) => m.provider === provider)) return res.status(400).json({ error: 'Please choose the mobile money provider you paid with.' });
+    const phone = String(senderPhone || '').trim();
+    if (!/^\+?[0-9 ]{8,15}$/.test(phone)) return res.status(400).json({ error: 'Enter the phone number you sent the money from.' });
+    note = `${provider} • from ${phone} — awaiting admin verification`;
+  }
+  // one transaction ID can only pay for one order
+  const used = db.payments.some((x) => x.id !== pay.id && x.method === pay.method && x.reference && x.reference.toLowerCase() === ref.toLowerCase() && ['submitted', 'completed'].includes(x.status));
+  if (used) return res.status(400).json({ error: 'That reference has already been used for another payment. Please check it, or contact the store.' });
   pay.status = 'submitted';
-  pay.reference = String(reference).trim().slice(0, 60);
-  pay.note = 'Client submitted reference — awaiting admin verification';
+  pay.reference = ref;
+  pay.note = note;
   pay.updatedAt = new Date().toISOString();
+  if (order.paymentStatus === 'failed') order.paymentStatus = 'unpaid';
   save();
   res.json({ ok: true, payment: pay, order });
 });
@@ -740,6 +744,52 @@ app.post('/api/admin/products', (req, res) => {
   logAudit(req, 'product.create', p.id);
   save();
   res.json(p);
+});
+/* bulk import: rows come from a spreadsheet saved as CSV (the browser parses it; the server checks every row again) */
+const toBool = (v, dflt) => { const t = String(v == null ? '' : v).trim().toLowerCase(); if (!t) return dflt; if (['yes', 'y', 'true', '1', 'x'].includes(t)) return true; if (['no', 'n', 'false', '0'].includes(t)) return false; return null; };
+function checkImportRow(r, catMap) {
+  const name = clean(r.name, 120);
+  if (!name) return { error: 'Name is missing.' };
+  const category = catMap.get(String(r.category || '').trim().toLowerCase());
+  if (!category) return { error: r.category ? `Unknown category “${clean(r.category, 40)}”.` : 'Category is missing.' };
+  const priceTxt = String(r.priceSLE == null ? '' : r.priceSLE).replace(/nle|le|,|\s/gi, '');
+  const price = parseFloat(priceTxt);
+  if (!/^\d+(\.\d+)?$/.test(priceTxt) || !(price > 0) || price > 1e9) return { error: 'Price (NLe) must be a number above 0.' };
+  const stockTxt = String(r.stock == null ? '' : r.stock).trim();
+  if (stockTxt && !/^\d{1,7}$/.test(stockTxt)) return { error: 'Stock must be a whole number.' };
+  const image = String(r.image || '').trim();
+  if (image && !/^(https:\/\/[^\s"'<>]{4,480}|(images|uploads)\/[A-Za-z0-9._-]{1,80})$/.test(image)) return { error: 'Image must be an https:// link (or leave it empty and add the photo later).' };
+  const featured = toBool(r.featured, false), active = toBool(r.active, true);
+  if (featured === null || active === null) return { error: 'Featured / Active must be yes or no.' };
+  return { value: { name, category, price: round2(price), stock: stockTxt ? parseInt(stockTxt, 10) : 0, image: image || 'images/placeholder.png', description: clean(r.description, 2000), featured, active } };
+}
+app.post('/api/admin/products/bulk', (req, res) => {
+  const rows = (req.body || {}).rows;
+  if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'The file has no product rows.' });
+  if (rows.length > 500) return res.status(400).json({ error: 'Please import at most 500 products at a time.' });
+  const catMap = new Map(db.settings.categories.map((c) => [c.toLowerCase(), c]));
+  const names = new Set(db.products.map((p) => p.name.trim().toLowerCase()));
+  const created = [], skipped = [];
+  rows.forEach((r, i) => {
+    const line = parseInt(r && r.line, 10) || i + 2;
+    const chk = checkImportRow(r || {}, catMap);
+    if (chk.error) return skipped.push({ line, name: clean(r && r.name, 60), reason: chk.error });
+    const v = chk.value, key = v.name.toLowerCase();
+    if (names.has(key)) return skipped.push({ line, name: v.name, reason: 'A product with this name already exists.' });
+    names.add(key);
+    let id = v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || uid('p');
+    if (db.products.find((x) => x.id === id)) id = uid('p');
+    const p = {
+      id, name: v.name, category: v.category, priceUSD: 0, priceSLE: 0, stock: v.stock, active: v.active, featured: v.featured,
+      image: v.image, description: v.description, reviews: [], createdAt: new Date().toISOString(),
+      createdById: req.user.id, createdByName: req.user.name
+    };
+    setPrice(p, { priceSLE: v.price });
+    db.products.push(p);
+    created.push(p.id);
+  });
+  if (created.length) { logAudit(req, 'product.bulk-import', `${created.length} products`); save(); }
+  res.json({ created: created.length, skipped });
 });
 app.put('/api/admin/products/:id', (req, res) => {
   const p = db.products.find((x) => x.id === req.params.id);
@@ -934,6 +984,18 @@ app.delete('/api/admin/coupons/:code', (req, res) => {
 app.put('/api/admin/settings', (req, res) => {
   const b = req.body || {};
   const s = db.settings;
+  let newPay = null;
+  if (b.paymentDetails != null) {
+    if (req.user.adminRole !== 'owner') return res.status(403).json({ error: 'Only the store owner can change where customers send payments.' });
+    const r = parsePaymentDetails(b.paymentDetails);
+    if (r.error) return res.status(400).json({ error: r.error });
+    newPay = r.value;
+  }
+  if (newPay && JSON.stringify(newPay) !== JSON.stringify(s.paymentDetails)) {
+    const sum = (d) => `bank ${d.bank.bankName ? d.bank.bankName + ' ' + mask(d.bank.accountNumber) : 'none'}; momo ${d.momo.map((m) => m.provider + ' ' + mask(m.number)).join(', ') || 'none'}`;
+    logAudit(req, 'payment-details.update', `${sum(s.paymentDetails)} -> ${sum(newPay)}`);
+    s.paymentDetails = newPay;
+  }
   if (b.storeName != null) s.storeName = String(b.storeName).slice(0, 60);
   if (b.exchangeRate != null) {
     const r = parseFloat(b.exchangeRate);

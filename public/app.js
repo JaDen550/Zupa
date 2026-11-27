@@ -258,7 +258,7 @@ async function renderHome(app) {
       <div class="hero-art">
         <div class="hero-card">
           <h4>Choose how you pay</h4>
-          <div class="pay-row"><span>💳 Card</span><span>📱 Orange Money</span><span>🏦 Bank transfer</span><span>💵 Cash on delivery</span></div>
+          <div class="pay-row"><span>📱 Mobile money</span><span>🏦 Bank transfer</span><span>💵 Cash on delivery</span></div>
         </div>
         <div class="hero-float a">📦 Order #ZP-5T3W7 shipped<small>Track it in My Orders</small></div>
         <div class="hero-float b">✅ Payment verified by admin<small>Bank transfer · NLe 7,917.75</small></div>
@@ -573,7 +573,11 @@ async function renderCheckout(app) {
   const rows = cartRows();
   if (!rows.length) { renderCart(app); return; }
   const subtotal = round2(rows.reduce((s, r) => s + r.p.priceUSD * r.qty, 0));
-  checkoutState = { method: checkoutState.method || 'bank', coupon: checkoutState.coupon };
+  const pd = state.settings.paymentDetails || { bank: {}, momo: [] };
+  const momoOpts = (pd.momo || []).filter(m => m.number);
+  const bankOk = !!(pd.bank && pd.bank.bankName && pd.bank.accountName && pd.bank.accountNumber);
+  const AVAIL = [...(momoOpts.length ? ['momo'] : []), ...(bankOk ? ['bank'] : []), 'cod'];
+  checkoutState = { method: AVAIL.includes(checkoutState.method) ? checkoutState.method : AVAIL[0], coupon: checkoutState.coupon };
 
   app.innerHTML = `
   <div class="container page">
@@ -603,8 +607,8 @@ async function renderCheckout(app) {
         <div class="panel">
           <h2>2 · Payment method</h2>
           <div class="pay-methods" id="payMethods">
-            <button class="pay-method" data-m="momo"><span class="ico">📱</span><b>Mobile Money</b><span>Orange Money, Africell Money & QMoney</span></button>
-            <button class="pay-method" data-m="bank"><span class="ico">🏦</span><b>Bank transfer</b><span>Transfer first — our team verifies it</span></button>
+            ${momoOpts.length ? `<button class="pay-method" data-m="momo"><span class="ico">📱</span><b>Mobile Money</b><span>${esc(momoOpts.map(m => m.provider).join(', '))}</span></button>` : ''}
+            ${bankOk ? '<button class="pay-method" data-m="bank"><span class="ico">🏦</span><b>Bank transfer</b><span>Transfer first — our team verifies it</span></button>' : ''}
             <button class="pay-method" data-m="cod"><span class="ico">💵</span><b>Cash on delivery</b><span>Pay the rider when your order arrives</span></button>
           </div>
           <div id="methodHint" style="background:var(--brand-xl);border-radius:10px;padding:12px 14px;font-size:13.5px;color:var(--ink-2);margin-top:12px"></div>
@@ -627,13 +631,13 @@ async function renderCheckout(app) {
           <button class="btn ghost sm" id="ckCouponBtn">Apply</button>
         </div>
         <button class="btn block lg" id="placeBtn">Place order · <span id="placeAmt"></span></button>
-        <p style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:10px">🔒 Payments are processed securely. This is a demo store — no real money moves.</p>
+        <p style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:10px">🔒 We never ask for your card number or wallet PIN. Mobile money and bank payments are checked by our team.</p>
       </div>
     </div>
   </div>`;
 
   const HINTS = {
-    momo: 'You will confirm the payment from your mobile wallet right after placing the order.',
+    momo: 'After placing your order, send the total to our mobile money number and enter the transaction ID. Our team verifies it, then your order moves forward.',
     bank: 'Order is placed first. Transfer the total to our bank account and submit your transfer reference — our admin verifies it and your order moves forward.',
     cod: 'No payment now. Our rider collects cash when your order is delivered. Available nationwide.'
   };
@@ -700,10 +704,8 @@ async function renderCheckout(app) {
       checkoutState.coupon = null;
       await refreshProducts();
       toast('Order ' + order.id + ' placed 🎉');
-      if (payment && (payment.method === 'card' || payment.method === 'momo')) {
-        openGateway(payment, order);
-      } else if (payment && payment.method === 'bank') {
-        openBankModal(payment, order);
+      if (payment && (payment.method === 'momo' || payment.method === 'bank')) {
+        openTransferModal(payment, order);
       } else {
         go('#/order/' + order.id);
       }
@@ -714,92 +716,71 @@ async function renderCheckout(app) {
   guardImages(app);
 }
 
-/* ----- Payment gateway (CLIENT-side payment flow) ----- */
-function openGateway(payment, order) {
-  const isCard = payment.method === 'card';
-  const m = openModal(`
-    <div class="gateway">
-      <div class="g-top"><span>🔒 ZUPA Pay Secure Gateway</span><span>DEMO</span></div>
-      <div class="g-amt">${money(payment.amountUSD, payment.exchangeRate)}</div>
-      <div class="g-sec">${isCard ? '💳 Card payment' : '📱 Mobile money'} · Order ${esc(order.id)}</div>
-    </div>
-    <div class="modal-body" id="gwBody">
-      ${isCard ? `
-        <div class="field"><label>Card number</label><input id="gwNumber" inputmode="numeric" value="4242 4242 4242 4242"></div>
-        <div class="form-row">
-          <div class="field"><label>Expiry</label><input id="gwExp" value="12/28"></div>
-          <div class="field"><label>CVC</label><input id="gwCvc" value="123" maxlength="4"></div>
+/* ----- Bank transfer / mobile money: the customer pays the store, then submits the transaction ID ----- */
+const nleText = (usd, rate) => 'NLe ' + (usd * (rate || state.settings.exchangeRate)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function transferPanelHtml(payment, order) {
+  const pd = state.settings.paymentDetails || { bank: {}, momo: [] };
+  const amount = `<b style="font-size:19px">${nleText(payment.amountUSD, payment.exchangeRate)}</b> <span style="font-size:12.5px;color:var(--muted)">(≈ $${Number(payment.amountUSD).toFixed(2)})</span>`;
+  if (payment.method === 'momo') {
+    const list = (pd.momo || []).filter(m => m.number);
+    return `
+      <div class="bank-box">Send exactly ${amount} to one of these numbers:
+        <div class="acc">
+          ${list.map(m => `<div style="margin-top:6px"><b>${esc(m.provider)}</b>: <b>${esc(m.number)}</b><br><span style="color:var(--muted);font-size:13px">Name: ${esc(m.accountName)}</span></div>`).join('')}
+          <div style="margin-top:8px">Reference / note: <b>${esc(order.id)}</b></div>
         </div>
-        <div class="field"><label>Name on card</label><input id="gwName" value="${esc(order.address.fullName)}"></div>
-        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Demo gateway — a card number ending in <b>0</b> will be declined (try it!).</p>`
-      : `
-        <div class="field"><label>Provider</label><select id="gwProvider"><option>Orange Money</option><option>Africell Money</option><option>QMoney</option></select></div>
-        <div class="field"><label>Mobile wallet number</label><input id="gwPhone" value="${esc(order.address.phone)}"></div>
-        <div class="field"><label>Wallet PIN</label><input id="gwPin" type="password" value="1234" maxlength="6"></div>
-        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Demo gateway — any PIN is accepted; a confirmation SMS would arrive in production.</p>`}
-      <div id="gwError"></div>
-      <button class="btn block lg" id="gwPay">Pay ${money(payment.amountUSD, payment.exchangeRate)} securely</button>
-    </div>`);
-
-  $('#gwPay', m).addEventListener('click', async () => {
-    const btn = $('#gwPay', m);
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" style="width:20px;height:20px;border-width:3px;display:inline-block;vertical-align:middle"></span> Processing payment…';
-    $('#gwError', m).innerHTML = '';
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Provider you paid with</label><select id="trProvider">${list.map(m => `<option>${esc(m.provider)}</option>`).join('')}</select></div>
+        <div class="field"><label>Phone you sent from</label><input id="trPhone" type="tel" value="${esc((state.user && state.user.phone) || '')}" placeholder="+232 7X XXX XXX"></div>
+      </div>
+      <div class="field"><label>Transaction ID from the confirmation SMS</label><input id="trRef" value="${esc(payment.reference || '')}" placeholder="e.g. MP260101.1234.A12345"></div>
+      <div id="trError"></div>
+      <button class="btn block" id="trSubmit">I have paid — submit transaction ID</button>`;
+  }
+  const b = pd.bank || {};
+  return `
+    <div class="bank-box">Transfer exactly ${amount} to:
+      <div class="acc">
+        Account name: <b>${esc(b.accountName)}</b><br>
+        Bank: <b>${esc(b.bankName)}</b>${b.branch ? ' · ' + esc(b.branch) : ''}<br>
+        Account no: <b>${esc(b.accountNumber)}</b><br>
+        Reference: <b>${esc(order.id)}</b>
+      </div>
+    </div>
+    <div class="field"><label>Transfer reference / transaction ID</label><input id="trRef" value="${esc(payment.reference || '')}" placeholder="From your bank receipt or app"></div>
+    <div id="trError"></div>
+    <button class="btn block" id="trSubmit">I have paid — submit reference</button>`;
+}
+function wireTransfer(root, payment, onDone) {
+  const btn = $('#trSubmit', root);
+  btn.addEventListener('click', async () => {
+    const label = btn.textContent; btn.disabled = true; btn.textContent = 'Submitting…';
+    $('#trError', root).innerHTML = '';
     try {
-      const body = isCard
-        ? { cardNumber: $('#gwNumber', m).value }
-        : { momoProvider: $('#gwProvider', m).value, momoPhone: $('#gwPhone', m).value };
-      await api('/api/payments/' + payment.id + '/process', { method: 'POST', body });
-      await refreshProducts();
-      $('#gwBody', m).innerHTML = `
-        <div class="processing">
-          <div class="success-mark">✓</div>
-          <h3 style="margin-bottom:6px">Payment successful!</h3>
-          <p style="color:var(--muted);font-size:14.5px;margin-bottom:4px">${money(payment.amountUSD, payment.exchangeRate)} paid for order <b>${esc(order.id)}</b></p>
-          <p style="color:var(--muted);font-size:13px">Receipt sent to your account email.</p>
-          <button class="btn block lg" id="gwDone" style="margin-top:18px">View my order →</button>
-        </div>`;
-      $('#gwDone', m).addEventListener('click', () => { closeModal(); go('#/order/' + order.id); });
-      toast('Payment confirmed ✅');
+      const body = { reference: $('#trRef', root).value };
+      if (payment.method === 'momo') { body.provider = $('#trProvider', root).value; body.senderPhone = $('#trPhone', root).value; }
+      await api('/api/payments/' + payment.id + '/submit-reference', { method: 'POST', body });
+      onDone();
     } catch (e) {
-      $('#gwError', m).innerHTML = `<div class="error-text">${esc(e.message)}</div>`;
-      btn.disabled = false;
-      btn.textContent = 'Pay ' + money(payment.amountUSD, payment.exchangeRate) + ' securely';
+      $('#trError', root).innerHTML = `<div class="error-text">${esc(e.message)}</div>`;
+      btn.disabled = false; btn.textContent = label;
     }
   });
 }
-
-function openBankModal(payment, order) {
+function openTransferModal(payment, order) {
+  const momo = payment.method === 'momo';
   const m = openModal(`
-    <div class="modal-head"><h3>🏦 Bank transfer</h3><button class="modal-x">✕</button></div>
+    <div class="modal-head"><h3>${momo ? '📱 Mobile money' : '🏦 Bank transfer'}</h3><button class="modal-x">✕</button></div>
     <div class="modal-body">
-      <p style="font-size:14.5px;color:var(--ink-2);margin-bottom:12px">Your order <b>${esc(order.id)}</b> is reserved. Transfer exactly:</p>
-      <div class="bank-box">
-        <b style="font-size:19px">${money(payment.amountUSD, payment.exchangeRate)}</b>
-        <div class="acc">
-          Account name: <b>ZUPA Ltd</b><br>
-          Bank: <b>Rokel Commercial Bank</b><br>
-          Account no: <b>SL01 RCBL 0000 1234 5678</b><br>
-          Reference: <b>${esc(order.id)}</b>
-        </div>
-      </div>
-      <div class="field"><label>Transfer reference / transaction ID</label><input id="bankRef" placeholder="e.g. SL26 9001 4455 8890"></div>
-      <div id="bankError"></div>
-      <button class="btn block" id="bankSubmit">I have paid — submit reference</button>
-      <p style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:10px">Our admin verifies transfers and your order moves to “Paid”.</p>
+      <p style="font-size:14.5px;color:var(--ink-2);margin-bottom:12px">Your order <b>${esc(order.id)}</b> is reserved. Pay it, then enter your ${momo ? 'transaction ID' : 'reference'} below.</p>
+      ${transferPanelHtml(payment, order)}
+      <p style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:10px">Our team checks your payment and your order moves to “Paid”. You can also do this later from My Orders.</p>
     </div>`);
-  $('#bankSubmit', m).addEventListener('click', async () => {
-    const btn = $('#bankSubmit', m); btn.disabled = true; btn.textContent = 'Submitting…';
-    try {
-      await api('/api/payments/' + payment.id + '/submit-reference', { method: 'POST', body: { reference: $('#bankRef', m).value } });
-      closeModal();
-      toast('Reference submitted — awaiting verification ⏳', 'warn');
-      go('#/order/' + order.id);
-    } catch (e) {
-      $('#bankError', m).innerHTML = `<div class="error-text">${esc(e.message)}</div>`;
-      btn.disabled = false; btn.textContent = 'I have paid — submit reference';
-    }
+  wireTransfer(m, payment, () => {
+    closeModal();
+    toast('Submitted — awaiting verification ⏳', 'warn');
+    go('#/order/' + order.id);
   });
 }
 
@@ -888,30 +869,12 @@ async function renderOrder(app, id) {
           </div>`;
         })()}
 
-        ${activePay && activePay.method === 'bank' && activePay.status !== 'failed' ? `
-        <div class="panel">
-          <h2>🏦 Awaiting bank transfer</h2>
-          ${activePay.status === 'pending' ? `
-            <div class="bank-box">
-              Transfer <b>${money(activePay.amountUSD, activePay.exchangeRate)}</b> to:
-              <div class="acc">Account name: <b>ZUPA Ltd</b><br>Bank: <b>Rokel Commercial Bank</b><br>Account no: <b>SL01 RCBL 0000 1234 5678</b><br>Reference: <b>${esc(o.id)}</b></div>
-            </div>
-            <div class="field"><label>Transfer reference / transaction ID</label><input id="ordRef" value="${esc(activePay.reference || '')}" placeholder="e.g. SL26 9001 4455 8890"></div>
-            <button class="btn" id="ordRefBtn">Submit reference for verification</button>`
-      : `<div class="ok-text">Reference <b>${esc(activePay.reference)}</b> submitted — our admin is verifying it. Your order moves to “Paid” once confirmed.</div>`}
-        </div>` : ''}
-
-        ${activePay && ['card', 'momo'].includes(activePay.method) ? `
-        <div class="panel">
-          <h2>Payment required</h2>
-          <p style="color:var(--ink-2);font-size:14.5px;margin-bottom:12px">Complete your ${METHOD[activePay.method].label.toLowerCase()} of <b>${money(activePay.amountUSD, activePay.exchangeRate)}</b> to confirm the order.</p>
-          <button class="btn lg" id="retryPay">Pay now →</button>
-        </div>` : ''}
-
-        ${activePay && activePay.status === 'failed' ? `
-        <div class="panel"><h2>Payment failed</h2>
-          <p style="color:var(--ink-2);font-size:14.5px;margin-bottom:12px">Your last attempt didn't go through. Try again with another method.</p>
-          <button class="btn lg" id="retryPay">Try payment again →</button>
+        ${activePay && ['bank', 'momo'].includes(activePay.method) && o.status === 'awaiting_payment' ? `
+        <div class="panel" id="payPanel">
+          <h2>${activePay.method === 'momo' ? '📱 Pay with mobile money' : '🏦 Pay by bank transfer'}</h2>
+          ${activePay.status === 'submitted'
+            ? `<div class="ok-text">Reference <b>${esc(activePay.reference)}</b> submitted — our team is verifying it. Your order moves to “Paid” once confirmed.</div>`
+            : `${activePay.status === 'failed' ? `<div class="error-text" style="margin-bottom:12px">Your last payment could not be verified${activePay.note ? ': ' + esc(activePay.note) : ''}. Check the details and submit the correct reference.</div>` : ''}${transferPanelHtml(activePay, o)}`}
         </div>` : ''}
 
         <div class="panel">
@@ -962,16 +925,7 @@ async function renderOrder(app, id) {
     </div>
   </div>`;
 
-  const refBtn = $('#ordRefBtn', app);
-  if (refBtn) refBtn.addEventListener('click', async () => {
-    refBtn.disabled = true; refBtn.textContent = 'Submitting…';
-    try {
-      await api('/api/payments/' + activePay.id + '/submit-reference', { method: 'POST', body: { reference: $('#ordRef', app).value } });
-      toast('Reference submitted ⏳', 'warn'); renderOrder(app, id);
-    } catch (e) { toast(e.message, 'err'); refBtn.disabled = false; refBtn.textContent = 'Submit reference for verification'; }
-  });
-  const retry = $('#retryPay', app);
-  if (retry) retry.addEventListener('click', () => openGateway(activePay || payments[payments.length - 1], o));
+  if ($('#trSubmit', app)) wireTransfer($('#payPanel', app), activePay, () => { toast('Submitted — awaiting verification ⏳', 'warn'); renderOrder(app, id); });
   const cancelBtn = $('#cancelBtn', app);
   if (cancelBtn) cancelBtn.addEventListener('click', () => {
     confirmDialog('Cancel order?', 'Stock will be returned and the order will be closed. This cannot be undone.', async () => {
@@ -1101,10 +1055,10 @@ function renderLogin(app, params, tab = 'login') {
         <button id="tabReg" class="${tab === 'register' ? 'on' : ''}">Create account</button>
       </div>
       <div id="authBody"></div>
-      <div class="demo-box">
-        <b>Demo accounts</b><br>
+      ${/^(localhost|127\.|192\.168\.|10\.)/.test(location.hostname) ? `<div class="demo-box">
+        <b>Demo accounts (this computer only)</b><br>
         Customer: <code>demo@zupa.sl</code> / <code>demo123</code><button class="fill" id="fillCust">Use</button>
-      </div>
+      </div>` : ''}
     </div>
   </div>`;
 
@@ -1174,7 +1128,7 @@ function renderLogin(app, params, tab = 'login') {
   }
   $('#tabLogin', app).addEventListener('click', () => { $('#tabLogin', app).classList.add('on'); $('#tabReg', app).classList.remove('on'); drawLogin(); });
   $('#tabReg', app).addEventListener('click', () => { $('#tabReg', app).classList.add('on'); $('#tabLogin', app).classList.remove('on'); drawRegister(); });
-  $('#fillCust', app).addEventListener('click', () => { drawLogin(); $('#lgEmail', body).value = 'demo@zupa.sl'; $('#lgPass', body).value = 'demo123'; });
+  if ($('#fillCust', app)) $('#fillCust', app).addEventListener('click', () => { drawLogin(); $('#lgEmail', body).value = 'demo@zupa.sl'; $('#lgPass', body).value = 'demo123'; });
   tab === 'register' ? drawRegister() : drawLogin();
 }
 
@@ -1325,13 +1279,152 @@ async function loadBestSellers(box, days) {
   guardImages(box);
 }
 
+/* ----- Bulk product import from a spreadsheet saved as CSV ----- */
+function parseCSV(text) {
+  text = String(text).replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0] || '';
+  const count = (ch) => (first.match(new RegExp(ch === '\t' ? '\\t' : '\\' + ch, 'g')) || []).length;
+  const delim = [',', ';', '\t'].sort((a, b) => count(b) - count(a))[0];
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.some(x => x.trim() !== '')) rows.push(row); row = []; }
+    else cur += ch;
+  }
+  row.push(cur); if (row.some(x => x.trim() !== '')) rows.push(row);
+  return rows;
+}
+const IMPORT_COLS = {
+  name: ['name', 'productname', 'product', 'title'], category: ['category', 'categories', 'type'],
+  priceSLE: ['pricenle', 'pricesle', 'price', 'pricele', 'priceinnle', 'nle'], stock: ['stock', 'quantity', 'qty', 'instock'],
+  description: ['description', 'desc', 'details'], image: ['imageurl', 'image', 'photo', 'picture', 'imagelink'],
+  featured: ['featured', 'feature'], active: ['active', 'visible', 'live']
+};
+function importCheck(r, catMap, names) {
+  const name = String(r.name || '').trim();
+  if (!name) return 'Name is missing';
+  const cat = catMap.get(String(r.category || '').trim().toLowerCase());
+  if (!cat) return r.category ? `Unknown category “${r.category}”` : 'Category is missing';
+  const priceTxt = String(r.priceSLE || '').replace(/nle|le|,|\s/gi, '');
+  if (!/^\d+(\.\d+)?$/.test(priceTxt) || !(parseFloat(priceTxt) > 0)) return 'Price (NLe) must be a number above 0';
+  const st = String(r.stock || '').trim();
+  if (st && !/^\d{1,7}$/.test(st)) return 'Stock must be a whole number';
+  const img = String(r.image || '').trim();
+  if (img && !/^(https:\/\/[^\s"'<>]{4,480}|(images|uploads)\/[A-Za-z0-9._-]{1,80})$/.test(img)) return 'Image must be an https:// link (or leave it empty)';
+  const yn = (v) => !String(v || '').trim() || ['yes', 'y', 'true', '1', 'x', 'no', 'n', 'false', '0'].includes(String(v).trim().toLowerCase());
+  if (!yn(r.featured) || !yn(r.active)) return 'Featured / Active must be yes or no';
+  if (names.has(name.toLowerCase())) return 'Already in your store, or repeated in this file';
+  names.add(name.toLowerCase());
+  return '';
+}
+function importDialog(existing, cats, onDone) {
+  const m = openModal(`
+    <div class="modal-head"><h3>Import products from a spreadsheet</h3><button class="modal-x">✕</button></div>
+    <div class="modal-body" id="impBody"></div>`, 'wide');
+  const body = $('#impBody', m);
+  const catMap = new Map(cats.map(x => [x.toLowerCase(), x]));
+  const downloadTemplate = () => {
+    const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
+    const csv = '﻿' + [
+      ['Name', 'Category', 'Price (NLe)', 'Stock', 'Description', 'Image URL', 'Featured', 'Active'],
+      ['Example T-shirt', cats[0] || 'Fashion', 250, 20, 'Soft cotton T-shirt', '', 'no', 'yes'],
+      ['Example snack pack', cats[1] || cats[0] || 'Food & Agro', 45.5, 100, '', '', 'no', 'yes']
+    ].map(r => r.map(q).join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'zupa-products-template.csv'; document.body.appendChild(a); a.click(); a.remove();
+  };
+  const drawStart = (msg) => {
+    body.innerHTML = `
+      <ol style="margin:0 0 14px 20px;line-height:1.8;color:var(--ink-2);font-size:14.5px">
+        <li><button class="link-btn" id="impTpl">Download the template (CSV)</button> and open it in Excel or Google Sheets.</li>
+        <li>Fill in one product per row. Required: <b>Name, Category, Price (NLe)</b>. Categories must match the ones in Settings: <b>${esc(cats.join(', '))}</b>.</li>
+        <li>Save or download the sheet as <b>CSV</b> (Excel: File → Save As → CSV; Google Sheets: File → Download → CSV).</li>
+        <li>Choose the file below. You'll see a preview before anything is added.</li>
+      </ol>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Photos: put an https:// link in <b>Image URL</b>, or leave it empty and add the photo afterwards with <b>Edit</b>. Products without a photo show the ZUPA placeholder.</p>
+      ${msg ? `<div class="error-text" style="margin-bottom:10px">${esc(msg)}</div>` : ''}
+      <div class="dropzone" id="impDrop" tabindex="0" role="button" aria-label="Choose a CSV file">
+        <div class="dz-text"><b>Drag &amp; drop</b> your CSV file here<br>or <u>click to choose</u><small>.csv · up to 500 products</small></div>
+        <input type="file" id="impFile" accept=".csv,text/csv" hidden>
+      </div>`;
+    $('#impTpl', body).addEventListener('click', downloadTemplate);
+    const drop = $('#impDrop', body), file = $('#impFile', body);
+    drop.addEventListener('click', () => file.click());
+    drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+    file.addEventListener('change', () => file.files[0] && read(file.files[0]));
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+    drop.addEventListener('drop', (e) => e.dataTransfer.files[0] && read(e.dataTransfer.files[0]));
+  };
+  const read = async (f) => {
+    if (!/\.csv$/i.test(f.name) && !/csv|text\/plain/.test(f.type)) return drawStart('Please choose a .csv file. In Excel use File → Save As → CSV.');
+    if (f.size > 2 * 1024 * 1024) return drawStart('That file is too large (maximum 2 MB).');
+    const grid = parseCSV(await f.text());
+    if (grid.length < 2) return drawStart('The file has no product rows.');
+    const norm = (h) => String(h).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const idx = {};
+    grid[0].forEach((h, i) => { const k = Object.keys(IMPORT_COLS).find(key => IMPORT_COLS[key].includes(norm(h))); if (k && idx[k] == null) idx[k] = i; });
+    const missing = ['name', 'category', 'priceSLE'].filter(k => idx[k] == null);
+    if (missing.length) return drawStart('Column(s) not found: ' + missing.map(k => ({ name: 'Name', category: 'Category', priceSLE: 'Price (NLe)' }[k])).join(', ') + '. Please use the template.');
+    if (grid.length - 1 > 500) return drawStart('Please import at most 500 products at a time.');
+    const names = new Set(existing.map(p => p.name.trim().toLowerCase()));
+    const rows = grid.slice(1).map((cells, i) => {
+      const r = { line: i + 2 };
+      for (const k of Object.keys(idx)) r[k] = (cells[idx[k]] || '').trim();
+      r.problem = importCheck(r, catMap, names);
+      return r;
+    });
+    drawPreview(rows);
+  };
+  const drawPreview = (rows) => {
+    const ok = rows.filter(r => !r.problem), bad = rows.length - ok.length;
+    body.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <span class="tag" style="background:#e6f7ee;color:#127a45">${ok.length} ready to import</span>
+        ${bad ? `<span class="tag" style="background:#fdeaea;color:#b42318">${bad} will be skipped</span>` : ''}
+      </div>
+      <div class="table-wrap" style="max-height:320px;overflow:auto">
+        <table class="dtable"><thead><tr><th>Row</th><th>Name</th><th>Category</th><th>Price (NLe)</th><th>Stock</th><th>Check</th></tr></thead>
+        <tbody>${rows.slice(0, 150).map(r => `<tr><td>${r.line}</td><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${esc(r.priceSLE)}</td><td>${esc(r.stock || '0')}</td>
+          <td>${r.problem ? `<span style="color:var(--red);font-weight:600">${esc(r.problem)}</span>` : '<span style="color:#127a45;font-weight:700">✓ Ready</span>'}</td></tr>`).join('')}</tbody></table>
+      </div>
+      ${rows.length > 150 ? `<p style="font-size:12.5px;color:var(--muted);margin-top:6px">Showing the first 150 of ${rows.length} rows. All rows are checked.</p>` : ''}
+      <div id="impErr"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="btn ghost" id="impBack">Choose another file</button>
+        <button class="btn" id="impGo" ${ok.length ? '' : 'disabled'}>Import ${ok.length} product${ok.length === 1 ? '' : 's'}</button>
+      </div>`;
+    $('#impBack', body).addEventListener('click', () => drawStart());
+    $('#impGo', body).addEventListener('click', async () => {
+      const btn = $('#impGo', body); btn.disabled = true; btn.textContent = 'Importing…';
+      try {
+        const res = await api('/api/admin/products/bulk', { method: 'POST', body: { rows: ok.map(({ problem, ...r }) => r) } });
+        await refreshProducts();
+        body.innerHTML = `
+          <div style="text-align:center;padding:10px 0 6px"><div class="success-mark">✓</div>
+            <h3 style="margin:8px 0 4px">${res.created} product${res.created === 1 ? '' : 's'} added</h3>
+            <p style="color:var(--muted);font-size:14px">They are live in the store now. Open a product and click <b>Edit</b> to add its photo.</p></div>
+          ${res.skipped.length ? `<p style="font-size:13.5px;margin-top:10px"><b>${res.skipped.length} skipped:</b></p><ul style="margin:4px 0 0 20px;font-size:13px;color:var(--ink-2)">${res.skipped.slice(0, 20).map(x => `<li>Row ${x.line}${x.name ? ' (' + esc(x.name) + ')' : ''}: ${esc(x.reason)}</li>`).join('')}</ul>` : ''}
+          <button class="btn block" id="impDone" style="margin-top:16px">Done</button>`;
+        $('#impDone', body).addEventListener('click', () => { closeModal(); toast(res.created + ' products imported'); onDone(); });
+      } catch (e) { $('#impErr', body).innerHTML = `<div class="error-text" style="margin-top:10px">${esc(e.message)}</div>`; btn.disabled = false; btn.textContent = 'Try again'; }
+    });
+  };
+  drawStart();
+}
+
 async function adminProducts(c) {
   const list = await api('/api/admin/products');
   const cats = state.settings.categories;
   c.innerHTML = `
     <div class="section-head">
       <div><h2>Products</h2><p>${list.length} products in catalogue</p></div>
-      <button class="btn" id="addProd">＋ Add product</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost" id="impProd">⬆ Import spreadsheet</button><button class="btn" id="addProd">＋ Add product</button></div>
     </div>
     <div class="table-wrap">
       <table class="dtable">
@@ -1433,6 +1526,7 @@ async function adminProducts(c) {
   };
 
   $('#addProd', c).addEventListener('click', () => openForm(null));
+  $('#impProd', c).addEventListener('click', () => importDialog(list, cats, () => adminProducts(c)));
   $$('[data-edit]', c).forEach(b => b.addEventListener('click', () => openForm(list.find(p => p.id === b.dataset.edit))));
   $$('[data-feat]', c).forEach(t => t.addEventListener('change', async () => {
     try { await api('/api/admin/products/' + t.dataset.feat, { method: 'PUT', body: { featured: t.checked } }); toast('Updated'); }
@@ -1726,6 +1820,50 @@ async function adminCoupons(c) {
   }));
 }
 
+function drawPayDetails(box) {
+  const pd = state.settings.paymentDetails || { bank: {}, momo: [] };
+  const b = pd.bank || {};
+  const owner = state.user && state.user.adminRole === 'owner';
+  const PROVS = ['Orange Money', 'Africell Money', 'QMoney'];
+  const mm = (name) => (pd.momo || []).find(m => m.provider === name) || {};
+  const dis = owner ? '' : 'disabled';
+  box.innerHTML = `
+    <h3>Payment details</h3>
+    <p style="font-size:13.5px;color:var(--muted);margin-bottom:14px">This is where customers are told to send their money. Check every digit: customers see exactly what you type here. A method you leave empty is not offered at checkout (cash on delivery is always offered).</p>
+    ${owner ? '' : '<div class="demo-box" style="margin:0 0 14px">🔒 Only the store owner can change payment details.</div>'}
+    <div class="form-row">
+      <div class="field"><label>Bank name</label><input id="pdBank" value="${esc(b.bankName || '')}" placeholder="e.g. Rokel Commercial Bank" ${dis}></div>
+      <div class="field"><label>Branch (optional)</label><input id="pdBranch" value="${esc(b.branch || '')}" ${dis}></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Account name</label><input id="pdAccName" value="${esc(b.accountName || '')}" placeholder="Name on the bank account" ${dis}></div>
+      <div class="field"><label>Account number</label><input id="pdAccNo" value="${esc(b.accountNumber || '')}" inputmode="numeric" ${dis}></div>
+    </div>
+    <h4 style="margin:14px 0 8px">Mobile money numbers</h4>
+    ${PROVS.map((n, i) => `
+    <div class="form-row">
+      <div class="field"><label>${n} number</label><input data-mmnum="${i}" value="${esc(mm(n).number || '')}" type="tel" placeholder="+232 7X XXX XXX" ${dis}></div>
+      <div class="field"><label>Registered name</label><input data-mmname="${i}" value="${esc(mm(n).accountName || '')}" ${dis}></div>
+    </div>`).join('')}
+    ${owner ? '<button class="btn" id="pdSave">Save payment details</button>' : ''}
+    <div id="pdMsg"></div>`;
+  const save = $('#pdSave', box);
+  if (!save) return;
+  save.addEventListener('click', () => {
+    confirmDialog('Save payment details?', 'Customers will be told to send their money to exactly these details. Please check the numbers once more.', async () => {
+      save.disabled = true;
+      try {
+        const updated = await api('/api/admin/settings', { method: 'PUT', body: { paymentDetails: {
+          bank: { bankName: $('#pdBank', box).value, branch: $('#pdBranch', box).value, accountName: $('#pdAccName', box).value, accountNumber: $('#pdAccNo', box).value },
+          momo: PROVS.map((n, i) => ({ provider: n, number: $(`[data-mmnum="${i}"]`, box).value, accountName: $(`[data-mmname="${i}"]`, box).value }))
+        } } });
+        state.settings = updated; toast('Payment details saved'); drawPayDetails(box);
+        $('#pdMsg', box).innerHTML = '<div class="ok-text" style="margin-top:12px">Saved. Customers now see these details at checkout.</div>';
+      } catch (e) { $('#pdMsg', box).innerHTML = `<div class="error-text" style="margin-top:12px">${esc(e.message)}</div>`; save.disabled = false; }
+    });
+  });
+}
+
 function adminSettings(c) {
   const s = state.settings;
   c.innerHTML = `
@@ -1752,13 +1890,15 @@ function adminSettings(c) {
         <div class="kv"><span>Current customer view</span><b>${store.currency === 'SLE' ? 'NLe' : 'Dollars ($)'}</b></div>
         <p style="font-size:13.5px;color:var(--muted);margin-top:10px">Customers toggle NLe/$ with the button in the header — both sides of the store always show the same value.</p>
         <div class="divider" style="border-top:1px solid var(--line);margin:16px 0"></div>
-        <h3>Payment flows</h3>
+        <h3>How payments work</h3>
         <p style="font-size:13.5px;color:var(--muted);line-height:1.7">
-          <b style="color:var(--ink)">1 · Client side</b> — mobile money via the ZUPA Pay gateway; bank transfers submit a reference.<br>
-          <b style="color:var(--ink)">2 · Admin side</b> — verify bank transfers, reject bad payments, record cash/POS receipts against any order.
+          <b style="color:var(--ink)">Customer:</b> pays your bank account or mobile money number, then submits the transaction ID.<br>
+          <b style="color:var(--ink)">You:</b> check it against your bank / wallet statement under <b>Payments</b>, then mark it verified. Nothing is marked paid automatically.
         </p>
       </div>
-    </div>`;
+    </div>
+    <div class="panel" style="margin-top:18px" id="payDetailsPanel"></div>`;
+  drawPayDetails($('#payDetailsPanel', c));
   $('#stSave', c).addEventListener('click', async () => {
     const btn = $('#stSave', c); btn.disabled = true; btn.textContent = 'Saving…';
     try {
@@ -1869,7 +2009,7 @@ const LEGAL = {
 
 <h2>4. Payment</h2>
 <ul>
-  <li><b>Mobile money:</b> pay from your mobile wallet when you place the order.</li>
+  <li><b>Mobile money:</b> send the total to our mobile money number shown at checkout, then enter the transaction ID. Your order moves forward once our team has verified the payment.</li>
   <li><b>Bank transfer:</b> transfer the total to our bank account and submit your transfer reference. Your order moves forward once our team has verified the payment.</li>
   <li><b>Cash on delivery:</b> pay the delivery rider when you receive your order.</li>
   <li>Orders that stay unpaid for a reasonable time may be cancelled.</li>

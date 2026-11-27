@@ -8,7 +8,7 @@ import { useLoad } from '../../lib/hooks';
 import { fmtDate } from '../../lib/format';
 import { C, METHOD, ORDER_FLOW, R, STATUS } from '../../lib/theme';
 import { Badge, Button, Card, ErrorBox, Loading, Page, Row } from '../../components/ui';
-import { BankModal, GatewayModal } from '../../components/PaymentModals';
+import { TransferModal } from '../../components/PaymentModals';
 
 function fmtEta(eta) {
   const a = new Date(eta.from), b = new Date(eta.to);
@@ -121,22 +121,19 @@ export default function OrderScreen() {
 
           <TrackingCard events={o.tracking || []} status={o.status} eta={o.eta} />
 
-          {active && !cancelled ? (
+          {active && !cancelled && o.status === 'awaiting_payment' && ['bank', 'momo'].includes(active.method) ? (
             <Card style={{ backgroundColor: active.status === 'failed' ? C.redL : C.amberL, borderColor: 'transparent' }}>
               <Text style={{ fontWeight: '800', fontSize: 16, color: C.ink }}>
-                {active.status === 'submitted' ? '🏦 Transfer submitted'
-                  : active.status === 'failed' ? 'Payment failed' : 'Payment needed'}
+                {active.status === 'submitted' ? '⏳ Payment submitted'
+                  : active.status === 'failed' ? 'Payment could not be verified' : 'Payment needed'}
               </Text>
               <Text style={{ color: C.ink2, marginVertical: 6 }}>
-                {active.status === 'submitted' ? 'Our team is verifying your transfer reference. This usually takes a short while.'
-                  : active.status === 'failed' ? (active.note || 'The payment did not go through.') + ' You can try again.'
-                  : active.method === 'bank' ? 'Transfer the total and submit your reference.' : 'Complete your payment to confirm the order.'}
+                {active.status === 'submitted' ? 'Our team is verifying your reference. This usually takes a short while.'
+                  : active.status === 'failed' ? (active.note || 'We could not verify it.') + ' Check the details and submit the correct reference.'
+                  : 'Pay the total, then submit your transaction ID.'}
               </Text>
-              {active.status !== 'submitted' || active.method === 'bank' ? (
-                <Button
-                  title={active.method === 'bank' ? (active.status === 'submitted' ? 'Update reference' : 'Transfer details') : active.status === 'failed' ? 'Try payment again' : 'Pay now'}
-                  onPress={() => setSheet(true)} small
-                />
+              {active.status !== 'submitted' ? (
+                <Button title={active.status === 'failed' ? 'Try again' : 'Payment details'} onPress={() => setSheet(true)} small />
               ) : null}
             </Card>
           ) : null}
@@ -188,8 +185,7 @@ export default function OrderScreen() {
         </View>
       </Page>
 
-      <GatewayModal visible={sheet && !!active && ['card', 'momo'].includes(active.method)} payment={active} order={o} onClose={() => setSheet(false)} onPaid={afterPay} />
-      <BankModal visible={sheet && !!active && active.method === 'bank'} payment={active} order={o} onClose={() => setSheet(false)} onSubmitted={afterPay} />
+      <TransferModal visible={sheet && !!active && ['bank', 'momo'].includes(active.method)} payment={active} order={o} onClose={() => setSheet(false)} onSubmitted={afterPay} />
     </>
   );
 }

@@ -7,13 +7,8 @@ import { api } from '../lib/api';
 import { useLoad } from '../lib/hooks';
 import { C, R, METHOD } from '../lib/theme';
 import { Button, Card, ErrorBox, Field, Loading, Page, Row } from '../components/ui';
-import { BankModal, GatewayModal } from '../components/PaymentModals';
+import { TransferModal } from '../components/PaymentModals';
 
-const METHODS = [
-  { id: 'momo', sub: 'Orange Money, Africell Money & QMoney' },
-  { id: 'bank', sub: 'Transfer first — our team verifies it' },
-  { id: 'cod', sub: 'Pay the rider when it arrives' }
-];
 
 export default function Checkout() {
   const router = useRouter();
@@ -22,7 +17,7 @@ export default function Checkout() {
   const [addr, setAddr] = useState({
     fullName: user?.name || '', phone: user?.phone || '', line1: '', city: user?.city || '', region: ''
   });
-  const [method, setMethod] = useState('bank');
+  const [chosen, setMethod] = useState('');
   const [notes, setNotes] = useState('');
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // {code, percent}
@@ -31,6 +26,16 @@ export default function Checkout() {
   const [err, setErr] = useState('');
   const [pending, setPending] = useState(null); // {order, payment} while a payment sheet is open
   const [placed, setPlaced] = useState(false); // stops the empty-cart redirect after a successful order
+
+  const pd = settings.paymentDetails || { bank: {}, momo: [] };
+  const momoOpts = (pd.momo || []).filter((m) => m.number);
+  const bankOk = !!(pd.bank && pd.bank.bankName && pd.bank.accountName && pd.bank.accountNumber);
+  const METHODS = [
+    ...(momoOpts.length ? [{ id: 'momo', sub: momoOpts.map((m) => m.provider).join(', ') }] : []),
+    ...(bankOk ? [{ id: 'bank', sub: 'Transfer first — our team verifies it' }] : []),
+    { id: 'cod', sub: 'Pay the rider when it arrives' }
+  ];
+  const method = METHODS.some((m) => m.id === chosen) ? chosen : METHODS[0].id;
 
   if (!user) return <Redirect href="/login" />;
   if (!cart.length && !placed) return <Redirect href="/cart" />;
@@ -69,7 +74,7 @@ export default function Checkout() {
       });
       setPlaced(true);
       clearCart();
-      if (res.payment && ['card', 'momo', 'bank'].includes(method)) setPending(res);
+      if (res.payment && ['momo', 'bank'].includes(method)) setPending(res);
       else goToOrder(res.order.id);
     } catch (e) { setErr(e.message); } finally { setPlacing(false); }
   };
@@ -134,14 +139,8 @@ export default function Checkout() {
       </View>
 
       {/* Payment sheets: closing without paying still leaves a valid order the customer can pay from Orders. */}
-      <GatewayModal
-        visible={!!pending && ['card', 'momo'].includes(pending.payment.method)}
-        payment={pending?.payment} order={pending?.order || {}}
-        onClose={() => { const id = pending.order.id; setPending(null); goToOrder(id); }}
-        onPaid={() => { const id = pending.order.id; setPending(null); goToOrder(id); }}
-      />
-      <BankModal
-        visible={!!pending && pending.payment.method === 'bank'}
+      <TransferModal
+        visible={!!pending}
         payment={pending?.payment} order={pending?.order || {}}
         onClose={() => { const id = pending.order.id; setPending(null); goToOrder(id); }}
         onSubmitted={() => { const id = pending.order.id; setPending(null); goToOrder(id); }}
