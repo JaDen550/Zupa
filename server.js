@@ -35,6 +35,15 @@ function save() {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   if (storage) storage.push(db); // also saved to Neon
 }
+if (storage) {
+  // lets storage.js merge in changes that another copy of the server made in Neon (never overwrite them)
+  storage.bind(() => db, (fresh) => {
+    for (const k of Object.keys(db)) delete db[k];
+    Object.assign(db, fresh);
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  });
+  app.use('/api', (req, res, next) => { storage.refresh().then(() => next(), () => next()); });
+}
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const uid = (p) => p + '-' + crypto.randomBytes(5).toString('hex').toUpperCase();
 
