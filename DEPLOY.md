@@ -30,3 +30,16 @@ Notes
 - Free plans on most hosts "sleep" after ~15 minutes without visitors; the first visit then takes ~30 seconds. A paid plan removes that.
 - Run **one** copy of the server only (the data is saved as one document in Neon).
 - This keeps your current data model in Neon. The fully relational Neon design (`zupa-web`, Next.js + Prisma) is the long-term target; this step makes today's site persistent and hostable.
+
+## Email for password-reset codes
+
+Without this, reset codes only appear in the server log. Pick ONE provider and add its variables in Render -> Environment (and in your local `.env` if you test locally). Never put keys in code or chat.
+
+| Variable | Value |
+|---|---|
+| `MAIL_FROM` | `ZUPA <orders@yourdomain.com>` (Brevo: the sender address you verified) |
+| `RESEND_API_KEY` | from resend.com -> API Keys (needs a verified domain to email customers) |
+| `BREVO_API_KEY` | from brevo.com -> SMTP & API -> API keys (lets you verify a single sender address) |
+
+Render's free plan blocks normal SMTP mail ports, which is why ZUPA uses the providers' web APIs.
+After saving the variables, Render redeploys. Test with "Forgot password" on a real account, and check Render -> Logs for `Could not send the reset email` if nothing arrives (check Spam too).

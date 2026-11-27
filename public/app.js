@@ -268,7 +268,7 @@ async function renderHome(app) {
 
   <div class="container">
     <div class="why-strip">
-      <div class="why-card"><div class="ico">🔒</div><b>Secure payments</b><span>Card & mobile money through the ZUPA Pay gateway, verified by our team.</span></div>
+      <div class="why-card"><div class="ico">🔒</div><b>Secure payments</b><span>Mobile money &amp; bank transfer, verified by our team.</span></div>
       <div class="why-card"><div class="ico">🚚</div><b>Fast delivery</b><span>Free delivery in Freetown on orders over ${money(state.settings.freeShippingOverUSD)}.</span></div>
       <div class="why-card"><div class="ico">💱</div><b>NLe & Dollars</b><span>Switch currency instantly — pay in the money you prefer.</span></div>
       <div class="why-card"><div class="ico">🤝</div><b>Local support</b><span>Real people in Freetown, ready to help with your order.</span></div>
@@ -1754,7 +1754,7 @@ function adminSettings(c) {
         <div class="divider" style="border-top:1px solid var(--line);margin:16px 0"></div>
         <h3>Payment flows</h3>
         <p style="font-size:13.5px;color:var(--muted);line-height:1.7">
-          <b style="color:var(--ink)">1 · Client side</b> — card & mobile money via the ZUPA Pay gateway; bank transfers submit a reference.<br>
+          <b style="color:var(--ink)">1 · Client side</b> — mobile money via the ZUPA Pay gateway; bank transfers submit a reference.<br>
           <b style="color:var(--ink)">2 · Admin side</b> — verify bank transfers, reject bad payments, record cash/POS receipts against any order.
         </p>
       </div>

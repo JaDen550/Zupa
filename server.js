@@ -295,8 +295,9 @@ app.post('/api/auth/change-password', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* Forgot password. There is no email service connected yet, so the 6-digit code is printed in the
-   server console (clearly marked). Connect an email/SMS provider later to deliver it for real. */
+/* Forgot password. With an email provider set up (see mailer.js) the 6-digit code is emailed.
+   Without one, the code is printed in the server console instead (local testing only). */
+const mailer = require('./mailer');
 app.post('/api/auth/forgot', (req, res) => {
   if (limited(req, 'forgot', 5, 60 * 60000)) return res.status(429).json({ error: 'Too many requests. Please try again later.' });
   const email = normEmail(req.body && req.body.email);
@@ -305,7 +306,13 @@ app.post('/api/auth/forgot', (req, res) => {
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     user.reset = { hash: sha(code + ':' + user.id), exp: Date.now() + 15 * 60000, tries: 0 };
     save();
-    console.log(`\n[ZUPA] Password reset code for ${user.email}: ${code}  (valid 15 minutes)\n`);
+    if (mailer.configured()) {
+      // not awaited: the answer is the same, and equally fast, whether or not the account exists
+      mailer.sendMail({ to: user.email, ...mailer.resetEmail(user.name, code) })
+        .catch((e) => console.error('[ZUPA] Could not send the reset email:', e.message));
+    } else {
+      console.log(`\n[ZUPA] Password reset code for ${user.email}: ${code}  (valid 15 minutes)\n`);
+    }
   }
   // same answer whether or not the account exists
   res.json({ ok: true, message: 'If that email has an account, a 6-digit reset code has been sent.' });
