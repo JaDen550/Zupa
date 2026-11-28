@@ -222,36 +222,19 @@ function pCard(p) {
       <span class="cat">${esc(p.category)}</span>
       <h3><a href="#/product/${esc(p.id)}">${esc(p.name)}</a></h3>
       <div class="rate">${stars(p.rating)} <span>${p.rating ? p.rating.toFixed(1) : 'New'}${p.reviewCount ? ' (' + p.reviewCount + ')' : ''}</span></div>
-      ${hasSizes(p) && !out ? sizeChips(p, '') : ''}
       <div class="price-row">
         <div class="price">${money(p.priceUSD)}<small>${secondCurrency(p.priceUSD)}</small></div>
-        <button class="add-btn" data-add="${esc(p.id)}" ${out ? 'disabled' : ''} title="Add to cart">+</button>
+        <button class="add-btn" data-add="${esc(p.id)}" ${out ? 'disabled' : ''} title="${hasSizes(p) ? 'Choose size' : 'Add to cart'}">+</button>
       </div>
       ${out ? '<div class="stock-out">Out of stock</div>' : p.stock <= 5 ? `<div class="stock-low">Only ${p.stock} left</div>` : ''}
     </div>
   </article>`;
 }
 function bindCards(root) {
-  $$('.p-card .size-chip', root).forEach(ch => ch.addEventListener('click', () => {
-    const on = ch.classList.contains('on');
-    $$('.size-chip', ch.parentNode).forEach(x => x.classList.remove('on'));
-    ch.parentNode.classList.remove('need');
-    if (!on) ch.classList.add('on');
-  }));
   $$('[data-add]', root).forEach(b => b.addEventListener('click', () => {
-    const card = b.closest('.p-card'), p = state.products.find(x => x.id === b.dataset.add);
-    let size = '';
-    if (hasSizes(p)) {
-      const on = $('.size-chip.on', card);
-      if (!on) {
-        const row = $('.sizes', card);
-        toast('Please choose a size first.', 'warn');
-        if (row) { row.classList.remove('need'); void row.offsetWidth; row.classList.add('need'); }
-        return;
-      }
-      size = on.dataset.size;
-    }
-    addToCart(b.dataset.add, 1, size);
+    const p = state.products.find(x => x.id === b.dataset.add);
+    if (hasSizes(p)) { toast('Choose your size on the product page.', 'warn'); go('#/product/' + p.id); return; }
+    addToCart(b.dataset.add, 1);
   }));
   $$('[data-wish]', root).forEach(b => b.addEventListener('click', () => {
     toggleWish(b.dataset.wish);
@@ -418,7 +401,10 @@ async function renderProduct(app, id) {
   <div class="container page">
     <div class="crumb"><a href="#/">Home</a> / <a href="#/shop">Shop</a> / <a href="#/shop?category=${encodeURIComponent(p.category)}">${esc(p.category)}</a> / ${esc(p.name)}</div>
     <div class="pd">
-      <div class="pd-img"><img src="${esc(p.image)}" alt="${esc(p.name)}"></div>
+      <div class="pd-media">
+        <div class="pd-img"><img id="pdMain" src="${esc(p.image)}" alt="${esc(p.name)}"></div>
+        ${(p.gallery || []).length ? `<div class="pd-thumbs" id="pdThumbs">${[p.image, ...p.gallery].map((src, i) => `<button type="button" class="pd-thumb ${i === 0 ? 'on' : ''}" data-src="${esc(src)}" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}
+      </div>
       <div class="pd-info">
         <span class="cat">${esc(p.category)}</span>
         <h1>${esc(p.name)}</h1>
@@ -497,6 +483,10 @@ async function renderProduct(app, id) {
   $('#qMinus', app).addEventListener('click', () => { qi.value = Math.max(1, (parseInt(qi.value, 10) || 1) - 1); updTotal(); });
   $('#qPlus', app).addEventListener('click', () => { qi.value = (parseInt(qi.value, 10) || 1) + 1; updTotal(); });
   qi.addEventListener('change', updTotal);
+  $$('#pdThumbs .pd-thumb', app).forEach(t => t.addEventListener('click', () => {
+    $('#pdMain', app).src = t.dataset.src;
+    $$('#pdThumbs .pd-thumb', app).forEach(x => x.classList.toggle('on', x === t));
+  }));
   let pickedSize = '';
   $$('#pdSizes .size-chip', app).forEach(ch => ch.addEventListener('click', () => {
     pickedSize = ch.dataset.size;
@@ -962,8 +952,9 @@ async function renderOrder(app, id) {
           ${payments.map(p => `
             <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px;font-size:13px;color:var(--muted)">
               <div style="display:flex;justify-content:space-between;gap:8px"><b style="color:var(--ink)">${esc(p.id)}</b> ${pill(p.status)}</div>
-              <div>${esc(p.note || '')} ${p.reference ? '· Ref: <b>' + esc(p.reference) + '</b>' : ''}</div>
-              <div>${esc(p.side)}-side · ${fmtDate(p.createdAt)}</div>
+              ${isAdmin()
+                ? `<div>${esc(p.note || '')} ${p.reference ? '· Ref: <b>' + esc(p.reference) + '</b>' : ''}</div><div>${esc(p.side)}-side · ${fmtDate(p.createdAt)}</div>`
+                : `<div>${{ completed: '✅ Payment verified', submitted: 'We received your details and are verifying your payment', pending: 'Waiting for your payment', failed: 'Payment could not be verified — please submit it again' }[p.status] || ''} · ${fmtDate(p.updatedAt || p.createdAt)}</div>`}
             </div>`).join('')}
         </div>
         <div class="panel">
@@ -1516,6 +1507,10 @@ async function adminProducts(c) {
             <input type="hidden" id="pfImage" value="${p ? esc(p.image) : ''}">
           </div>
         </div>
+        <div class="field"><label>More photos <small style="font-weight:500;color:var(--muted)">(optional · e.g. the item on a model, other angles · up to 8)</small></label>
+          <div class="gal-edit" id="pfGal"></div>
+          <input type="file" id="pfGalFile" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+          <div class="hint" id="pfGalMsg"></div></div>
         <div class="field"><label>Sizes <small style="font-weight:500;color:var(--muted)">(leave empty if the product has no sizes)</small></label>
           <input id="pfSizes" value="${p && Array.isArray(p.sizes) ? esc(p.sizes.join(', ')) : ''}" placeholder="S, M, L, XL, XXL">
           <div class="size-presets"><button type="button" class="btn ghost sm" data-sz="S, M, L, XL, XXL">Clothes S–XXL</button><button type="button" class="btn ghost sm" data-sz="S, M, L, XL">Gloves S–XL</button><button type="button" class="btn ghost sm" data-sz="38, 39, 40, 41, 42, 43, 44, 45">Shoes 38–45</button><button type="button" class="btn ghost sm" data-sz="">No sizes</button></div></div>
@@ -1526,6 +1521,29 @@ async function adminProducts(c) {
         </div>
         <button class="btn block" id="pfSave">${p ? 'Save changes' : 'Create product'}</button>
       </div>`, 'wide');
+    let gallery = p && Array.isArray(p.gallery) ? [...p.gallery] : [];
+    const drawGal = () => {
+      $('#pfGal', m).innerHTML = gallery.map((g, i) => `<div class="gal-item"><img src="${esc(g)}" alt=""><button type="button" class="gal-x" data-gx="${i}" aria-label="Remove photo" title="Remove">✕</button></div>`).join('')
+        + (gallery.length < 8 ? '<button type="button" class="gal-add" id="pfGalAdd" aria-label="Add photos"><span>＋</span>Add photos</button>' : '');
+      $$('[data-gx]', m).forEach(x => x.addEventListener('click', () => { gallery.splice(+x.dataset.gx, 1); drawGal(); }));
+      const add = $('#pfGalAdd', m); if (add) add.addEventListener('click', () => $('#pfGalFile', m).click());
+    };
+    drawGal();
+    $('#pfGalFile', m).addEventListener('change', async (e) => {
+      const files = [...e.target.files]; e.target.value = '';
+      const msg = $('#pfGalMsg', m); msg.textContent = '';
+      for (const f of files) {
+        if (gallery.length >= 8) { msg.textContent = 'Maximum 8 extra photos.'; break; }
+        if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type)) { msg.textContent = 'Only PNG, JPG, WEBP or GIF images.'; continue; }
+        if (f.size > 5 * 1024 * 1024) { msg.textContent = f.name + ' is too large (max 5 MB).'; continue; }
+        msg.textContent = 'Uploading ' + f.name + '…';
+        try {
+          const dataUrl = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+          const up = await api('/api/admin/upload', { method: 'POST', body: { dataUrl } });
+          gallery.push(up.path); drawGal(); msg.textContent = '';
+        } catch (er) { msg.textContent = er.message; }
+      }
+    });
     $$('[data-sz]', m).forEach(b => b.addEventListener('click', () => { $('#pfSizes', m).value = b.dataset.sz; }));
     const showUsd = () => { const v = parseFloat($('#pfPrice', m).value); $('#pfUsd', m).textContent = v > 0 ? `≈ $${(v / state.settings.exchangeRate).toFixed(2)} at $1 = NLe ${state.settings.exchangeRate}` : ''; };
     $('#pfPrice', m).addEventListener('input', showUsd); showUsd();
@@ -1562,7 +1580,7 @@ async function adminProducts(c) {
         priceSLE: $('#pfPrice', m).value, stock: $('#pfStock', m).value,
         image: $('#pfImage', m).value.trim(), description: $('#pfDesc', m).value,
         featured: $('#pfFeat', m).checked, active: $('#pfActive', m).checked,
-        sizes: $('#pfSizes', m).value
+        sizes: $('#pfSizes', m).value, gallery
       };
       try {
         if (p) await api('/api/admin/products/' + p.id, { method: 'PUT', body });

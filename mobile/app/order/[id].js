@@ -158,8 +158,8 @@ export default function OrderScreen() {
             {o.payments.map((p) => (
               <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: C.line }}>
                 <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={{ fontWeight: '600', color: C.ink }}>{p.reference || p.id}</Text>
-                  {p.note ? <Text style={{ color: C.muted, fontSize: 12.5 }}>{p.note}</Text> : null}
+                  <Text style={{ fontWeight: '600', color: C.ink }}>{p.id}</Text>
+                  <Text style={{ color: C.muted, fontSize: 12.5 }}>{{ completed: 'Payment verified', submitted: 'We are verifying your payment', pending: 'Waiting for your payment', failed: 'Payment could not be verified. Please submit it again.' }[p.status] || ''}</Text>
                 </View>
                 <Badge status={p.status} />
               </View>

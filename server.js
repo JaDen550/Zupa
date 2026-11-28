@@ -147,6 +147,17 @@ function cleanSizes(v) {
   return out.slice(0, 14);
 }
 db.products.forEach((p) => { if (!Array.isArray(p.sizes)) p.sizes = suggestSizes(p); });
+// Extra photos of a product (on a model, other angles). Only our own upload paths or https links are accepted.
+function cleanGallery(v) {
+  const arr = Array.isArray(v) ? v : [];
+  const out = [];
+  for (const x of arr) {
+    const t = String(x || '').trim();
+    if (/^(uploads|images)\/[A-Za-z0-9._-]{1,80}$/.test(t) || /^https:\/\/[^\s"'<>]{4,480}$/.test(t)) { if (!out.includes(t)) out.push(t); }
+  }
+  return out.slice(0, 8);
+}
+db.products.forEach((p) => { if (!Array.isArray(p.gallery)) p.gallery = []; });
 save();
 const MOMO_PROVIDERS = ['Orange Money', 'Africell Money', 'QMoney'];
 const bankReady = () => { const b = db.settings.paymentDetails.bank; return !!(b.bankName && b.accountName && b.accountNumber); };
@@ -743,6 +754,7 @@ app.post('/api/admin/products', (req, res) => {
     image: b.image || 'images/coffee.png',
     description: String(b.description || '').slice(0, 2000),
     sizes: b.sizes != null ? cleanSizes(b.sizes) : suggestSizes({ name: b.name }),
+    gallery: cleanGallery(b.gallery),
     reviews: [], createdAt: new Date().toISOString(),
     createdById: req.user.id, createdByName: req.user.name   // set by the server, never trusted from the browser
   };
@@ -791,7 +803,7 @@ app.post('/api/admin/products/bulk', (req, res) => {
     if (db.products.find((x) => x.id === id)) id = uid('p');
     const p = {
       id, name: v.name, category: v.category, priceUSD: 0, priceSLE: 0, stock: v.stock, active: v.active, featured: v.featured,
-      image: v.image, description: v.description, sizes: v.sizes, reviews: [], createdAt: new Date().toISOString(),
+      image: v.image, description: v.description, sizes: v.sizes, gallery: [], reviews: [], createdAt: new Date().toISOString(),
       createdById: req.user.id, createdByName: req.user.name
     };
     setPrice(p, { priceSLE: v.price });
@@ -814,6 +826,7 @@ app.put('/api/admin/products/:id', (req, res) => {
   if (b.image != null) p.image = b.image;
   if (b.description != null) p.description = String(b.description).slice(0, 2000);
   if (b.sizes != null) p.sizes = cleanSizes(b.sizes);
+  if (b.gallery != null) p.gallery = cleanGallery(b.gallery);
   p.updatedById = req.user.id; p.updatedByName = req.user.name; p.updatedAt = new Date().toISOString();
   logAudit(req, 'product.update', p.id);
   save();

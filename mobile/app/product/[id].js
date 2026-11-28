@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useApp } from '../../context/AppContext';
@@ -17,6 +17,7 @@ export default function ProductScreen() {
   const { data: p, error, loading, reload } = useLoad(() => api('/api/products/' + id, { auth: false }), [id]);
   const [qty, setQty] = useState(1);
   const [size, setSize] = useState('');
+  const [shown, setShown] = useState('');
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -48,7 +49,17 @@ export default function ProductScreen() {
         )
       }} />
       <Page>
-        <Image source={{ uri: imageUrl(p.image) }} style={{ width, height: Math.min(width, 460), backgroundColor: C.brandXL }} resizeMode="cover" />
+        <Image source={{ uri: imageUrl(shown || p.image) }} style={{ width, height: Math.min(width, 460), backgroundColor: C.brandXL }} resizeMode="cover" />
+        {Array.isArray(p.gallery) && p.gallery.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingTop: 10 }}>
+            {[p.image, ...p.gallery].map((src) => (
+              <Pressable key={src} onPress={() => setShown(src)} accessibilityLabel="View photo"
+                style={{ width: 64, height: 64, borderRadius: R.s, overflow: 'hidden', borderWidth: 2, borderColor: (shown || p.image) === src ? C.brand : C.line }}>
+                <Image source={{ uri: imageUrl(src) }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
         <View style={{ padding: 16 }}>
           <Text style={{ color: C.muted, fontWeight: '600' }}>{p.category}</Text>
           <Text style={{ fontSize: 24, fontWeight: '900', color: C.ink, marginTop: 2 }}>{p.name}</Text>
