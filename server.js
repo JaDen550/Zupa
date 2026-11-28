@@ -128,6 +128,25 @@ if (!db.settings.paymentDetails || typeof db.settings.paymentDetails !== 'object
 }
 if (!Array.isArray(db.settings.paymentDetails.momo)) db.settings.paymentDetails.momo = [];
 if (!db.settings.paymentDetails.bank) db.settings.paymentDetails.bank = { bankName: '', accountName: '', accountNumber: '', branch: '' };
+// Sizes: wearable products (shirts, jerseys, gloves, shoes...) get a size picker in the store.
+const SHOE_RE = /\b(sneakers?|shoes?|boots?|sandals?|slippers?|loafers?|heels?|trainers?)\b/i;
+const WEAR_RE = /\b(t-?shirts?|shirts?|tees?|jerseys?|hoodies?|sweaters?|jackets?|trousers?|pants?|jeans?|shorts?|dress(es)?|skirts?|outfits?|gowns?|suits?|vests?|coats?|kaftans?|dashikis?|wax print|gloves?|socks?|leggings?|tracksuits?|sleeves?|wear|uniforms?|apparel|clothing|clothes)\b/i;
+function suggestSizes(p) {
+  const t = String((p && p.name) || '');
+  if (SHOE_RE.test(t)) return ['38', '39', '40', '41', '42', '43', '44', '45'];
+  if (WEAR_RE.test(t)) return ['S', 'M', 'L', 'XL', 'XXL'];
+  return [];
+}
+function cleanSizes(v) {
+  const parts = Array.isArray(v) ? v : String(v == null ? '' : v).split(/[,\/|;\n]+/);
+  const out = [];
+  for (const x of parts) {
+    const t = String(x).trim().toUpperCase();
+    if (/^[A-Z0-9.\-]{1,8}$/.test(t) && !out.includes(t)) out.push(t);
+  }
+  return out.slice(0, 14);
+}
+db.products.forEach((p) => { if (!Array.isArray(p.sizes)) p.sizes = suggestSizes(p); });
 save();
 const MOMO_PROVIDERS = ['Orange Money', 'Africell Money', 'QMoney'];
 const bankReady = () => { const b = db.settings.paymentDetails.bank; return !!(b.bankName && b.accountName && b.accountNumber); };
@@ -465,12 +484,20 @@ app.post('/api/orders', auth, (req, res) => {
   }
 
   const lineItems = [];
+  const wanted = {};
   for (const it of items) {
     const p = db.products.find((x) => x.id === it.productId && x.active);
     const qty = parseInt(it.qty, 10);
     if (!p || !(qty >= 1)) return res.status(400).json({ error: 'Invalid item in cart.' });
-    if (p.stock < qty) return res.status(400).json({ error: `Only ${p.stock} left of “${p.name}”.` });
-    lineItems.push({ productId: p.id, name: p.name, priceUSD: p.priceUSD, qty, image: p.image });
+    wanted[p.id] = (wanted[p.id] || 0) + qty;
+    if (p.stock < wanted[p.id]) return res.status(400).json({ error: `Only ${p.stock} left of “${p.name}”.` });
+    const line = { productId: p.id, name: p.name, priceUSD: p.priceUSD, qty, image: p.image };
+    if (Array.isArray(p.sizes) && p.sizes.length) {
+      const size = String(it.size == null ? '' : it.size).trim().toUpperCase();
+      if (!p.sizes.includes(size)) return res.status(400).json({ error: `Please choose a size for “${p.name}”.` });
+      line.size = size;
+    }
+    lineItems.push(line);
   }
 
   let subtotalUSD = round2(lineItems.reduce((s, i) => s + i.priceUSD * i.qty, 0));
@@ -519,29 +546,9 @@ app.post('/api/orders', auth, (req, res) => {
   res.json({ order, payment });
 });
 
+// Customers cannot cancel once an order is placed. Only the store (admin) can cancel an order.
 app.post('/api/orders/:id/cancel', auth, (req, res) => {
-  const o = orderByIdFor(req, req.params.id);
-  if (!o) return res.status(404).json({ error: 'Order not found.' });
-  if (!['awaiting_payment', 'paid'].includes(o.status)) {
-    return res.status(400).json({ error: 'This order can no longer be cancelled.' });
-  }
-  const hasCompleted = db.payments.some((p) => p.orderId === o.id && p.status === 'completed');
-  if (hasCompleted) return res.status(400).json({ error: 'Payment already completed — contact the store for a refund.' });
-  // restock
-  for (const it of o.items) {
-    const p = db.products.find((x) => x.id === it.productId);
-    if (p) p.stock += it.qty;
-  }
-  o.status = 'cancelled';
-  o.paymentStatus = 'failed';
-  trackForStatus(o, 'cancelled');
-  o.updatedAt = new Date().toISOString();
-  db.payments.filter((p) => p.orderId === o.id && p.status === 'pending').forEach((p) => {
-    p.status = 'failed';
-    p.updatedAt = o.updatedAt;
-  });
-  save();
-  res.json({ ok: true, order: o });
+  res.status(403).json({ error: 'Orders cannot be cancelled once they are placed. Please contact the store if you need help.' });
 });
 
 /* ---------------- Customer payments: bank transfer and mobile money ----------------
@@ -735,6 +742,7 @@ app.post('/api/admin/products', (req, res) => {
     featured: !!b.featured,
     image: b.image || 'images/coffee.png',
     description: String(b.description || '').slice(0, 2000),
+    sizes: b.sizes != null ? cleanSizes(b.sizes) : suggestSizes({ name: b.name }),
     reviews: [], createdAt: new Date().toISOString(),
     createdById: req.user.id, createdByName: req.user.name   // set by the server, never trusted from the browser
   };
@@ -761,7 +769,9 @@ function checkImportRow(r, catMap) {
   if (image && !/^(https:\/\/[^\s"'<>]{4,480}|(images|uploads)\/[A-Za-z0-9._-]{1,80})$/.test(image)) return { error: 'Image must be an https:// link (or leave it empty and add the photo later).' };
   const featured = toBool(r.featured, false), active = toBool(r.active, true);
   if (featured === null || active === null) return { error: 'Featured / Active must be yes or no.' };
-  return { value: { name, category, price: round2(price), stock: stockTxt ? parseInt(stockTxt, 10) : 0, image: image || 'images/placeholder.png', description: clean(r.description, 2000), featured, active } };
+  const sz = String(r.sizes == null ? '' : r.sizes).trim();
+  const sizes = !sz ? suggestSizes({ name }) : /^(none|no|-|n\/a)$/i.test(sz) ? [] : cleanSizes(sz);
+  return { value: { name, sizes, category, price: round2(price), stock: stockTxt ? parseInt(stockTxt, 10) : 0, image: image || 'images/placeholder.png', description: clean(r.description, 2000), featured, active } };
 }
 app.post('/api/admin/products/bulk', (req, res) => {
   const rows = (req.body || {}).rows;
@@ -781,7 +791,7 @@ app.post('/api/admin/products/bulk', (req, res) => {
     if (db.products.find((x) => x.id === id)) id = uid('p');
     const p = {
       id, name: v.name, category: v.category, priceUSD: 0, priceSLE: 0, stock: v.stock, active: v.active, featured: v.featured,
-      image: v.image, description: v.description, reviews: [], createdAt: new Date().toISOString(),
+      image: v.image, description: v.description, sizes: v.sizes, reviews: [], createdAt: new Date().toISOString(),
       createdById: req.user.id, createdByName: req.user.name
     };
     setPrice(p, { priceSLE: v.price });
@@ -803,6 +813,7 @@ app.put('/api/admin/products/:id', (req, res) => {
   if (b.featured != null) p.featured = !!b.featured;
   if (b.image != null) p.image = b.image;
   if (b.description != null) p.description = String(b.description).slice(0, 2000);
+  if (b.sizes != null) p.sizes = cleanSizes(b.sizes);
   p.updatedById = req.user.id; p.updatedByName = req.user.name; p.updatedAt = new Date().toISOString();
   logAudit(req, 'product.update', p.id);
   save();

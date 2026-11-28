@@ -68,7 +68,7 @@ export default function Checkout() {
       const res = await api('/api/orders', {
         method: 'POST',
         body: {
-          items: lines.map((l) => ({ productId: l.productId, qty: l.qty })),
+          items: lines.map((l) => ({ productId: l.productId, qty: l.qty, size: l.size || '' })),
           address: addr, paymentMethod: method, coupon: coupon?.code || '', notes
         }
       });
@@ -125,7 +125,7 @@ export default function Checkout() {
 
         <Card>
           <Text style={{ fontWeight: '800', fontSize: 16, marginBottom: 8 }}>Summary</Text>
-          {lines.map((l) => <Row key={l.productId} label={`${l.qty} × ${l.p.name}`} value={fmt(l.p.priceUSD * l.qty)} />)}
+          {lines.map((l) => <Row key={l.productId + '|' + (l.size || '')} label={`${l.qty} × ${l.p.name}${l.size ? ' (' + l.size + ')' : ''}`} value={fmt(l.p.priceUSD * l.qty)} />)}
           <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
           <Row label="Subtotal" value={fmt(subtotal)} />
           {discount ? <Row label={`Discount (${coupon.code})`} value={'−' + fmt(discount)} color={C.ok} /> : null}

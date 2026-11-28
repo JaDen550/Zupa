@@ -16,6 +16,7 @@ export default function ProductScreen() {
   const { fmt, fmt2, addToCart, wishlist, toggleWish, user, toast } = useApp();
   const { data: p, error, loading, reload } = useLoad(() => api('/api/products/' + id, { auth: false }), [id]);
   const [qty, setQty] = useState(1);
+  const [size, setSize] = useState('');
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -63,10 +64,27 @@ export default function ProductScreen() {
           </Text>
           <Text style={{ color: C.ink2, lineHeight: 22, marginTop: 12, fontSize: 15 }}>{p.description}</Text>
 
+          {!out && Array.isArray(p.sizes) && p.sizes.length ? (
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ color: C.muted, marginBottom: 8 }}>Size: <Text style={{ fontWeight: '800', color: C.ink }}>{size || 'Select a size'}</Text></Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {p.sizes.map((z) => (
+                  <Pressable key={z} onPress={() => setSize(z)} accessibilityLabel={'Size ' + z}
+                    style={{ minWidth: 46, height: 40, paddingHorizontal: 10, borderRadius: R.s, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
+                      borderColor: size === z ? C.brand : C.line, backgroundColor: size === z ? C.brand : '#fff' }}>
+                    <Text style={{ fontWeight: '800', color: size === z ? '#fff' : C.ink2 }}>{z}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
           {!out ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 }}>
               <Stepper value={qty} onChange={setQty} max={p.stock} />
-              <Button title="Add to cart" icon="cart-outline" onPress={() => { addToCart(p.id, qty); setQty(1); }} style={{ flex: 1, marginLeft: 16 }} />
+              <Button title="Add to cart" icon="cart-outline" onPress={() => {
+                if (Array.isArray(p.sizes) && p.sizes.length && !size) { toast('Please choose a size first.'); return; }
+                addToCart(p.id, qty, size); setQty(1);
+              }} style={{ flex: 1, marginLeft: 16 }} />
             </View>
           ) : null}
         </View>

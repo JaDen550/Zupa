@@ -83,7 +83,7 @@ export default function AdminOrders() {
 
                   {isOpen ? (
                     <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, gap: 4 }}>
-                      {o.items.map((i, idx) => <Text key={idx} style={{ color: C.ink2 }}>{i.qty} × {i.name}</Text>)}
+                      {o.items.map((i, idx) => <Text key={idx} style={{ color: C.ink2 }}>{i.qty} × {i.name}{i.size ? " (" + i.size + ")" : ""}</Text>)}
                       <Text style={{ color: C.muted, marginTop: 6 }}>📍 {o.address.fullName}, {o.address.phone}</Text>
                       <Text style={{ color: C.muted }}>{o.address.line1}, {o.address.city}</Text>
                       {o.notes ? <Text style={{ color: C.muted }}>📝 {o.notes}</Text> : null}

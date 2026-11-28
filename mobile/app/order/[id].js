@@ -72,19 +72,6 @@ export default function OrderScreen() {
   // the payment the customer can still act on
   const active = [...o.payments].reverse().find((p) => ['pending', 'submitted', 'failed'].includes(p.status) && p.method !== 'cod');
   const completed = o.payments.some((p) => p.status === 'completed');
-  const canCancel = ['awaiting_payment', 'paid'].includes(o.status) && !completed;
-
-  const cancel = () => Alert.alert('Cancel this order?', 'Items will be returned to stock.', [
-    { text: 'Keep order', style: 'cancel' },
-    {
-      text: 'Cancel order', style: 'destructive', onPress: async () => {
-        setBusy(true);
-        try { await api(`/api/orders/${o.id}/cancel`, { method: 'POST' }); toast('Order cancelled'); reload(); }
-        catch (e) { Alert.alert('Could not cancel', e.message); } finally { setBusy(false); }
-      }
-    }
-  ]);
-
   const afterPay = () => { setSheet(false); reload(); };
 
   return (
@@ -145,7 +132,7 @@ export default function OrderScreen() {
                 <Image source={{ uri: imageUrl(i.image) }} style={{ width: 50, height: 50, borderRadius: R.s, backgroundColor: C.brandXL }} />
                 <View style={{ flex: 1 }}>
                   <Text numberOfLines={2} style={{ fontWeight: '700', color: C.ink }}>{i.name}</Text>
-                  <Text style={{ color: C.muted, fontSize: 12.5 }}>{i.qty} × {fmt(i.priceUSD, o.exchangeRate)}</Text>
+                  <Text style={{ color: C.muted, fontSize: 12.5 }}>{i.size ? 'Size ' + i.size + ' · ' : ''}{i.qty} × {fmt(i.priceUSD, o.exchangeRate)}</Text>
                 </View>
                 <Text style={{ fontWeight: '800', color: C.brandD }}>{fmt(i.priceUSD * i.qty, o.exchangeRate)}</Text>
               </View>
@@ -180,7 +167,6 @@ export default function OrderScreen() {
             {o.paymentMethod === 'cod' && !o.payments.length ? <Text style={{ color: C.muted }}>Pay the rider on delivery.</Text> : null}
           </Card>
 
-          {canCancel ? <Button title="Cancel order" variant="danger" onPress={cancel} loading={busy} /> : null}
           <Button title="Continue shopping" variant="outline" onPress={() => router.push('/shop')} />
         </View>
       </Page>

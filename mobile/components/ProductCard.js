@@ -42,7 +42,7 @@ export default function ProductCard({ p, width }) {
           </View>
           <Pressable
             disabled={out}
-            onPress={() => addToCart(p.id, 1)}
+            onPress={() => (Array.isArray(p.sizes) && p.sizes.length ? router.push('/product/' + p.id) : addToCart(p.id, 1))}
             style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: out ? C.line : C.brand, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="add" size={20} color="#fff" />
           </Pressable>

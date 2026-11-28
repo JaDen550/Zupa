@@ -18,7 +18,7 @@ export function AppProvider({ children }) {
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [currency, setCurrencyState] = useState('USD');
-  const [cart, setCartState] = useState([]); // [{productId, qty}]
+  const [cart, setCartState] = useState([]); // [{productId, size?, qty}]
   const [wishlist, setWishlistState] = useState([]);
   const [serverUrl, setServerUrlState] = useState(DEFAULT_API_URL);
   const [toastMsg, setToastMsg] = useState('');
@@ -89,17 +89,19 @@ export function AppProvider({ children }) {
 
   // ---- cart ----
   const saveCart = (c) => { setCartState(c); setJSON('lm_cart', c); };
-  const addToCart = (productId, qty = 1) => {
-    const found = cart.find((i) => i.productId === productId);
+  // a cart line is a product + (optional) size, e.g. the same T-shirt in M and in L are two lines
+  const same = (i, productId, size) => i.productId === productId && (i.size || '') === (size || '');
+  const addToCart = (productId, qty = 1, size = '') => {
+    const found = cart.find((i) => same(i, productId, size));
     saveCart(found
-      ? cart.map((i) => (i.productId === productId ? { ...i, qty: i.qty + qty } : i))
-      : [...cart, { productId, qty }]);
+      ? cart.map((i) => (same(i, productId, size) ? { ...i, qty: i.qty + qty } : i))
+      : [...cart, size ? { productId, size, qty } : { productId, qty }]);
     toast('Added to cart');
   };
-  const setQty = (productId, qty) =>
-    saveCart(qty < 1 ? cart.filter((i) => i.productId !== productId)
-      : cart.map((i) => (i.productId === productId ? { ...i, qty } : i)));
-  const removeFromCart = (productId) => saveCart(cart.filter((i) => i.productId !== productId));
+  const setQty = (productId, qty, size = '') =>
+    saveCart(qty < 1 ? cart.filter((i) => !same(i, productId, size))
+      : cart.map((i) => (same(i, productId, size) ? { ...i, qty } : i)));
+  const removeFromCart = (productId, size = '') => saveCart(cart.filter((i) => !same(i, productId, size)));
   const clearCart = () => saveCart([]);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 

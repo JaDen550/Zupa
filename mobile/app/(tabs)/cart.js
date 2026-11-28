@@ -42,18 +42,21 @@ export default function Cart() {
           </View>
         )}
 
-        {lines.map(({ p, qty }) => (
-          <Card key={p.id} style={{ flexDirection: 'row', gap: 12 }}>
+        {lines.map(({ p, qty, size }) => (
+          <Card key={p.id + '|' + (size || '')} style={{ flexDirection: 'row', gap: 12 }}>
             <Pressable onPress={() => router.push('/product/' + p.id)}>
               <Image source={{ uri: imageUrl(p.image) }} style={{ width: 84, height: 84, borderRadius: R.s, backgroundColor: C.brandXL }} />
             </Pressable>
             <View style={{ flex: 1, justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text numberOfLines={2} style={{ flex: 1, fontWeight: '700', color: C.ink }}>{p.name}</Text>
-                <Ionicons name="trash-outline" size={20} color={C.red} onPress={() => removeFromCart(p.id)} style={{ marginLeft: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={2} style={{ fontWeight: '700', color: C.ink }}>{p.name}</Text>
+                  {size ? <Text style={{ color: C.muted, fontSize: 12.5 }}>Size: {size}</Text> : null}
+                </View>
+                <Ionicons name="trash-outline" size={22} color={C.red} onPress={() => removeFromCart(p.id, size)} style={{ marginLeft: 8 }} />
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Stepper value={qty} onChange={(n) => setQty(p.id, n)} max={Math.max(1, p.stock)} />
+                <Stepper value={qty} onChange={(n) => setQty(p.id, n, size)} max={Math.max(1, p.stock)} />
                 <Text style={{ fontWeight: '800', color: C.brandD }}>{fmt(p.priceUSD * qty)}</Text>
               </View>
               {qty > p.stock ? <Text style={{ color: C.red, fontSize: 12 }}>Only {p.stock} in stock</Text> : null}

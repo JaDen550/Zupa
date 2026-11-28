@@ -162,23 +162,33 @@ function syncHeader() {
 }
 
 /* ---------- cart helpers ---------- */
-function addToCart(id, qty = 1) {
-  if (isAdmin()) { toast('Admin accounts cannot place orders.', 'warn'); return; }
+const SIZE_NAMES = { XS: 'Extra small', S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra large', XXL: '2X large', XXXL: '3X large' };
+const sizeName = (z) => SIZE_NAMES[z] || (/^\d+(\.\d+)?$/.test(z) ? 'Size ' + z : z);
+const hasSizes = (p) => !!(p && Array.isArray(p.sizes) && p.sizes.length);
+const lineKey = (i) => i.id + (i.size ? '|' + i.size : '');
+const sizeChips = (p, selected) => `<div class="sizes" role="group" aria-label="Choose a size">${p.sizes.map(z => `<button type="button" class="size-chip ${z === selected ? 'on' : ''}" data-size="${esc(z)}" title="${esc(sizeName(z))}" aria-label="${esc(sizeName(z))}">${esc(z)}</button>`).join('')}</div>`;
+function addToCart(id, qty = 1, size = '') {
+  if (isAdmin()) { toast('Admin accounts cannot place orders.', 'warn'); return false; }
   const p = state.products.find(x => x.id === id);
   const max = p ? Math.max(p.stock, 0) : 99;
-  if (max <= 0) { toast('Sorry, this item is out of stock.', 'err'); return; }
+  if (max <= 0) { toast('Sorry, this item is out of stock.', 'err'); return false; }
+  if (hasSizes(p) && !p.sizes.includes(size)) { toast('Please choose a size first.', 'warn'); return false; }
+  if (!hasSizes(p)) size = '';
   const cart = store.cart;
-  const it = cart.find(x => x.id === id);
-  if (it) it.qty = Math.min(it.qty + qty, max);
-  else cart.push({ id, qty: Math.min(qty, max) });
+  const it = cart.find(x => x.id === id && (x.size || '') === size);
+  const inCart = cart.filter(x => x.id === id).reduce((n, x) => n + x.qty, 0);
+  if (inCart + qty > max) { toast(`Only ${max} available.`, 'warn'); qty = Math.max(max - inCart, 0); if (!qty) return false; }
+  if (it) it.qty += qty;
+  else cart.push(size ? { id, size, qty } : { id, qty });
   store.cart = cart;
   toast('Added to cart 🛒');
+  return true;
 }
-function setQty(id, qty) {
+function setQty(key, qty) {
   let cart = store.cart;
-  const it = cart.find(x => x.id === id);
+  const it = cart.find(x => lineKey(x) === key);
   if (!it) return;
-  if (qty <= 0) cart = cart.filter(x => x.id !== id);
+  if (qty <= 0) cart = cart.filter(x => lineKey(x) !== key);
   else it.qty = qty;
   store.cart = cart;
 }
@@ -212,6 +222,7 @@ function pCard(p) {
       <span class="cat">${esc(p.category)}</span>
       <h3><a href="#/product/${esc(p.id)}">${esc(p.name)}</a></h3>
       <div class="rate">${stars(p.rating)} <span>${p.rating ? p.rating.toFixed(1) : 'New'}${p.reviewCount ? ' (' + p.reviewCount + ')' : ''}</span></div>
+      ${hasSizes(p) && !out ? sizeChips(p, '') : ''}
       <div class="price-row">
         <div class="price">${money(p.priceUSD)}<small>${secondCurrency(p.priceUSD)}</small></div>
         <button class="add-btn" data-add="${esc(p.id)}" ${out ? 'disabled' : ''} title="Add to cart">+</button>
@@ -221,7 +232,27 @@ function pCard(p) {
   </article>`;
 }
 function bindCards(root) {
-  $$('[data-add]', root).forEach(b => b.addEventListener('click', () => { addToCart(b.dataset.add, 1); }));
+  $$('.p-card .size-chip', root).forEach(ch => ch.addEventListener('click', () => {
+    const on = ch.classList.contains('on');
+    $$('.size-chip', ch.parentNode).forEach(x => x.classList.remove('on'));
+    ch.parentNode.classList.remove('need');
+    if (!on) ch.classList.add('on');
+  }));
+  $$('[data-add]', root).forEach(b => b.addEventListener('click', () => {
+    const card = b.closest('.p-card'), p = state.products.find(x => x.id === b.dataset.add);
+    let size = '';
+    if (hasSizes(p)) {
+      const on = $('.size-chip.on', card);
+      if (!on) {
+        const row = $('.sizes', card);
+        toast('Please choose a size first.', 'warn');
+        if (row) { row.classList.remove('need'); void row.offsetWidth; row.classList.add('need'); }
+        return;
+      }
+      size = on.dataset.size;
+    }
+    addToCart(b.dataset.add, 1, size);
+  }));
   $$('[data-wish]', root).forEach(b => b.addEventListener('click', () => {
     toggleWish(b.dataset.wish);
     b.classList.toggle('on', store.wishlist.includes(b.dataset.wish));
@@ -400,6 +431,7 @@ async function renderProduct(app, id) {
           <span>SKU: <b>${esc(p.id.toUpperCase())}</b></span>
           <span>Currency: <b>${store.currency === 'SLE' ? 'NLe' : 'Dollars ($)'}</b></span>
         </div>
+        ${hasSizes(p) && !out ? `<div class="size-block"><div class="size-label">Size: <b id="sizeLbl">Select a size</b></div><div id="pdSizes">${sizeChips(p, '')}</div></div>` : ''}
         <div class="qty-row">
           <div class="qty-box">
             <button id="qMinus">−</button><input id="qInput" value="1" inputmode="numeric"><button id="qPlus">+</button>
@@ -465,7 +497,21 @@ async function renderProduct(app, id) {
   $('#qMinus', app).addEventListener('click', () => { qi.value = Math.max(1, (parseInt(qi.value, 10) || 1) - 1); updTotal(); });
   $('#qPlus', app).addEventListener('click', () => { qi.value = (parseInt(qi.value, 10) || 1) + 1; updTotal(); });
   qi.addEventListener('change', updTotal);
-  $('#addBtn', app).addEventListener('click', () => { addToCart(p.id, parseInt(qi.value, 10) || 1); });
+  let pickedSize = '';
+  $$('#pdSizes .size-chip', app).forEach(ch => ch.addEventListener('click', () => {
+    pickedSize = ch.dataset.size;
+    $$('#pdSizes .size-chip', app).forEach(x => x.classList.toggle('on', x === ch));
+    $('#sizeLbl', app).textContent = sizeName(pickedSize) + ' (' + pickedSize + ')';
+    $('#pdSizes .sizes', app).classList.remove('need');
+  }));
+  $('#addBtn', app).addEventListener('click', () => {
+    if (hasSizes(p) && !pickedSize) {
+      const row = $('#pdSizes .sizes', app); toast('Please choose a size first.', 'warn');
+      if (row) { row.classList.remove('need'); void row.offsetWidth; row.classList.add('need'); }
+      return;
+    }
+    addToCart(p.id, parseInt(qi.value, 10) || 1, pickedSize);
+  });
   $('#wishBtn', app).addEventListener('click', () => {
     toggleWish(p.id);
     $('#wishBtn', app).textContent = store.wishlist.includes(p.id) ? '♥ In wishlist' : '♡ Wishlist';
@@ -528,16 +574,17 @@ function renderCart(app) {
             <tr>
               <td><div class="cart-item">
                 <a href="#/product/${esc(r.p.id)}"><img src="${esc(r.p.image)}" alt=""></a>
-                <div><b><a href="#/product/${esc(r.p.id)}">${esc(r.p.name)}</a></b><span>${esc(r.p.category)}</span></div>
+                <div><b><a href="#/product/${esc(r.p.id)}">${esc(r.p.name)}</a></b><span>${esc(r.p.category)}</span>
+                  ${hasSizes(r.p) ? (r.size ? `<span class="cart-size">Size: <b>${esc(r.size)}</b> · ${esc(sizeName(r.size))}</span>` : `<select class="cart-size-pick" data-setsize="${esc(lineKey(r))}"><option value="">Choose size…</option>${r.p.sizes.map(z => `<option value="${esc(z)}">${esc(z)} · ${esc(sizeName(z))}</option>`).join('')}</select>`) : ''}</div>
               </div></td>
               <td>${money(r.p.priceUSD)}</td>
               <td><div class="qty-box" style="height:38px">
-                <button style="height:38px;width:34px" data-dec="${esc(r.id)}">−</button>
-                <input style="height:38px;width:44px" value="${r.qty}" data-qty="${esc(r.id)}">
-                <button style="height:38px;width:34px" data-inc="${esc(r.id)}">+</button>
+                <button style="height:38px;width:34px" data-dec="${esc(lineKey(r))}">−</button>
+                <input style="height:38px;width:44px" value="${r.qty}" data-qty="${esc(lineKey(r))}">
+                <button style="height:38px;width:34px" data-inc="${esc(lineKey(r))}">+</button>
               </div></td>
               <td><b>${money(round2(r.p.priceUSD * r.qty))}</b></td>
-              <td><button class="link-btn" data-del="${esc(r.id)}">Remove</button></td>
+              <td><button class="trash-btn" data-del="${esc(lineKey(r))}" title="Remove from cart" aria-label="Remove ${esc(r.p.name)} from cart"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -558,9 +605,19 @@ function renderCart(app) {
     </div>
   </div>`;
 
-  $$('[data-inc]', app).forEach(b => b.addEventListener('click', () => { setQty(b.dataset.inc, (store.cart.find(x => x.id === b.dataset.inc).qty) + 1); renderCart(app); }));
-  $$('[data-dec]', app).forEach(b => b.addEventListener('click', () => { setQty(b.dataset.dec, (store.cart.find(x => x.id === b.dataset.dec).qty) - 1); renderCart(app); }));
+  $$('[data-inc]', app).forEach(b => b.addEventListener('click', () => { const it = store.cart.find(x => lineKey(x) === b.dataset.inc), pr = state.products.find(x => x.id === it.id), have = store.cart.filter(x => x.id === it.id).reduce((n, x) => n + x.qty, 0);
+    if (pr && have >= pr.stock) { toast(`Only ${pr.stock} available.`, 'warn'); return; }
+    setQty(b.dataset.inc, it.qty + 1); renderCart(app); }));
+  $$('[data-dec]', app).forEach(b => b.addEventListener('click', () => { setQty(b.dataset.dec, (store.cart.find(x => lineKey(x) === b.dataset.dec).qty) - 1); renderCart(app); }));
   $$('[data-del]', app).forEach(b => b.addEventListener('click', () => { setQty(b.dataset.del, 0); renderCart(app); toast('Item removed'); }));
+  $$('[data-setsize]', app).forEach(sel => sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const cart = store.cart, it = cart.find(x => lineKey(x) === sel.dataset.setsize);
+    if (!it) return;
+    const other = cart.find(x => x !== it && x.id === it.id && x.size === sel.value);
+    if (other) { other.qty += it.qty; cart.splice(cart.indexOf(it), 1); } else it.size = sel.value;
+    store.cart = cart; renderCart(app);
+  }));
   $$('[data-qty]', app).forEach(inp => inp.addEventListener('change', () => {
     setQty(inp.dataset.qty, Math.max(0, parseInt(inp.value, 10) || 0)); renderCart(app);
   }));
@@ -572,6 +629,7 @@ async function renderCheckout(app) {
   if (!requireUser('checkout')) return;
   const rows = cartRows();
   if (!rows.length) { renderCart(app); return; }
+  if (rows.some(r => hasSizes(r.p) && !r.size)) { toast('Please choose a size for every item.', 'warn'); renderCart(app); return; }
   const subtotal = round2(rows.reduce((s, r) => s + r.p.priceUSD * r.qty, 0));
   const pd = state.settings.paymentDetails || { bank: {}, momo: [] };
   const momoOpts = (pd.momo || []).filter(m => m.number);
@@ -621,7 +679,7 @@ async function renderCheckout(app) {
           ${rows.map(r => `
           <div class="mini-item">
             <img src="${esc(r.p.image)}" alt="">
-            <div><b>${esc(r.p.name)}</b><span>Qty ${r.qty} · ${money(r.p.priceUSD)} each</span></div>
+            <div><b>${esc(r.p.name)}</b><span>${r.size ? 'Size ' + esc(r.size) + ' · ' : ''}Qty ${r.qty} · ${money(r.p.priceUSD)} each</span></div>
             <span class="m-price">${money(round2(r.p.priceUSD * r.qty))}</span>
           </div>`).join('')}
         </div>
@@ -694,7 +752,7 @@ async function renderCheckout(app) {
       const { order, payment } = await api('/api/orders', {
         method: 'POST',
         body: {
-          items: store.cart.map(i => ({ productId: i.id, qty: i.qty })),
+          items: store.cart.map(i => ({ productId: i.id, qty: i.qty, size: i.size || '' })),
           address, paymentMethod: checkoutState.method,
           coupon: checkoutState.coupon ? checkoutState.coupon.code : null,
           notes: $('#ckNotes', app).value.trim()
@@ -820,7 +878,6 @@ async function renderOrder(app, id) {
   const completedPay = payments.find(p => p.status === 'completed');
   const flowIdx = ORDER_FLOW.indexOf(o.status);
   const cancelled = o.status === 'cancelled';
-  const canCancel = ['awaiting_payment', 'paid'].includes(o.status) && !completedPay;
 
   const timeline = cancelled ? `
     <div class="tl-step done"><div class="tl-dot">✓</div><div><b>Order placed</b><span>${fmtDate(o.createdAt)}</span></div></div>
@@ -882,7 +939,7 @@ async function renderOrder(app, id) {
           ${o.items.map(it => `
             <div class="item-line">
               <img src="${esc(it.image)}" alt="">
-              <div class="m"><b>${esc(it.name)}</b><span>Qty ${it.qty} · ${money(it.priceUSD, o.exchangeRate)} each</span></div>
+              <div class="m"><b>${esc(it.name)}</b><span>${it.size ? 'Size ' + esc(it.size) + ' · ' : ''}Qty ${it.qty} · ${money(it.priceUSD, o.exchangeRate)} each</span></div>
               <div class="amt">${money(round2(it.priceUSD * it.qty))}</div>
             </div>`).join('')}
         </div>
@@ -918,7 +975,6 @@ async function renderOrder(app, id) {
           <div style="font-size:12.5px;color:var(--muted);text-align:right">≈ ${secondCurrency(o.totalUSD)}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${canCancel ? '<button class="btn danger block" id="cancelBtn">Cancel order</button>' : ''}
           <a class="btn ghost block" href="#/orders">← All my orders</a>
         </div>
       </div>
@@ -926,15 +982,6 @@ async function renderOrder(app, id) {
   </div>`;
 
   if ($('#trSubmit', app)) wireTransfer($('#payPanel', app), activePay, () => { toast('Submitted — awaiting verification ⏳', 'warn'); renderOrder(app, id); });
-  const cancelBtn = $('#cancelBtn', app);
-  if (cancelBtn) cancelBtn.addEventListener('click', () => {
-    confirmDialog('Cancel order?', 'Stock will be returned and the order will be closed. This cannot be undone.', async () => {
-      await api('/api/orders/' + o.id + '/cancel', { method: 'POST' });
-      await refreshProducts();
-      toast('Order cancelled');
-      renderOrder(app, id);
-    }, true);
-  });
   guardImages(app);
 }
 
@@ -1302,7 +1349,7 @@ const IMPORT_COLS = {
   name: ['name', 'productname', 'product', 'title'], category: ['category', 'categories', 'type'],
   priceSLE: ['pricenle', 'pricesle', 'price', 'pricele', 'priceinnle', 'nle'], stock: ['stock', 'quantity', 'qty', 'instock'],
   description: ['description', 'desc', 'details'], image: ['imageurl', 'image', 'photo', 'picture', 'imagelink'],
-  featured: ['featured', 'feature'], active: ['active', 'visible', 'live']
+  sizes: ['sizes', 'size', 'availablesizes'], featured: ['featured', 'feature'], active: ['active', 'visible', 'live']
 };
 function importCheck(r, catMap, names) {
   const name = String(r.name || '').trim();
@@ -1330,9 +1377,9 @@ function importDialog(existing, cats, onDone) {
   const downloadTemplate = () => {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
     const csv = '﻿' + [
-      ['Name', 'Category', 'Price (NLe)', 'Stock', 'Description', 'Image URL', 'Featured', 'Active'],
-      ['Example T-shirt', cats[0] || 'Fashion', 250, 20, 'Soft cotton T-shirt', '', 'no', 'yes'],
-      ['Example snack pack', cats[1] || cats[0] || 'Food & Agro', 45.5, 100, '', '', 'no', 'yes']
+      ['Name', 'Category', 'Price (NLe)', 'Stock', 'Description', 'Image URL', 'Featured', 'Active', 'Sizes'],
+      ['Example T-shirt', cats[0] || 'Fashion', 250, 20, 'Soft cotton T-shirt', '', 'no', 'yes', 'S/M/L/XL'],
+      ['Example snack pack', cats[1] || cats[0] || 'Food & Agro', 45.5, 100, '', '', 'no', 'yes', 'none']
     ].map(r => r.map(q).join(',')).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1469,6 +1516,9 @@ async function adminProducts(c) {
             <input type="hidden" id="pfImage" value="${p ? esc(p.image) : ''}">
           </div>
         </div>
+        <div class="field"><label>Sizes <small style="font-weight:500;color:var(--muted)">(leave empty if the product has no sizes)</small></label>
+          <input id="pfSizes" value="${p && Array.isArray(p.sizes) ? esc(p.sizes.join(', ')) : ''}" placeholder="S, M, L, XL, XXL">
+          <div class="size-presets"><button type="button" class="btn ghost sm" data-sz="S, M, L, XL, XXL">Clothes S–XXL</button><button type="button" class="btn ghost sm" data-sz="S, M, L, XL">Gloves S–XL</button><button type="button" class="btn ghost sm" data-sz="38, 39, 40, 41, 42, 43, 44, 45">Shoes 38–45</button><button type="button" class="btn ghost sm" data-sz="">No sizes</button></div></div>
         <div class="field"><label>Description</label><textarea id="pfDesc">${p ? esc(p.description) : ''}</textarea></div>
         <div style="display:flex;gap:18px;margin-bottom:14px">
           <label style="display:flex;gap:8px;align-items:center;font-weight:600;font-size:14px"><input type="checkbox" id="pfFeat" ${p && p.featured ? 'checked' : ''}> Featured</label>
@@ -1476,6 +1526,7 @@ async function adminProducts(c) {
         </div>
         <button class="btn block" id="pfSave">${p ? 'Save changes' : 'Create product'}</button>
       </div>`, 'wide');
+    $$('[data-sz]', m).forEach(b => b.addEventListener('click', () => { $('#pfSizes', m).value = b.dataset.sz; }));
     const showUsd = () => { const v = parseFloat($('#pfPrice', m).value); $('#pfUsd', m).textContent = v > 0 ? `≈ $${(v / state.settings.exchangeRate).toFixed(2)} at $1 = NLe ${state.settings.exchangeRate}` : ''; };
     $('#pfPrice', m).addEventListener('input', showUsd); showUsd();
     const drop = $('#pfDrop', m), file = $('#pfFile', m);
@@ -1510,7 +1561,8 @@ async function adminProducts(c) {
         name: $('#pfName', m).value.trim(), category: $('#pfCat', m).value,
         priceSLE: $('#pfPrice', m).value, stock: $('#pfStock', m).value,
         image: $('#pfImage', m).value.trim(), description: $('#pfDesc', m).value,
-        featured: $('#pfFeat', m).checked, active: $('#pfActive', m).checked
+        featured: $('#pfFeat', m).checked, active: $('#pfActive', m).checked,
+        sizes: $('#pfSizes', m).value
       };
       try {
         if (p) await api('/api/admin/products/' + p.id, { method: 'PUT', body });
@@ -2005,7 +2057,7 @@ const LEGAL = {
 </ul>
 
 <h2>3. Orders</h2>
-<p>Placing an order is an offer to buy. We accept it when we confirm it, which may be after we verify your payment. We may refuse or cancel an order, for example if an item is out of stock, a payment cannot be verified or we suspect fraud. If you have already paid, we will refund you.</p>
+<p>Placing an order is an offer to buy. We accept it when we confirm it, which may be after we verify your payment. Once you have placed an order you cannot cancel it yourself, so please check your items, sizes and delivery details before you confirm. If something is wrong, contact us straight away and we will do our best to help. We may refuse or cancel an order, for example if an item is out of stock, a payment cannot be verified or we suspect fraud. If you have already paid, we will refund you.</p>
 
 <h2>4. Payment</h2>
 <ul>
